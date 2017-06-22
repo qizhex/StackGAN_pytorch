@@ -7,8 +7,9 @@ import datetime
 import argparse
 import pprint
 
+from Modules.Optim import Optim
 from Modules.Datasets import TextDataset
-from Model.Stage2 import CondGAN
+from Model.model import StackGAN
 from Modules.Utils import mkdir_p
 from Modules.Config import cfg, cfg_from_file
 
@@ -44,10 +45,68 @@ class CondGANTrainer(object):
         print('lr_image_shape', self.lr_image_shape)
 
     def train(self):
-
         if len(self.model_path) > 0:
             print("Reading model parameters from %s" % self.model_path)
+        #The only difference of two stages is about parameters
+        model = StackGAN(lr_imsize, hr_lr_ratio)
+        model.parameters().data._normal(0, 0.02)
+        for stage in [1, 2]:
+            #TODO reload cfg
+            sadflkj
+            cfg =
+            lr_decay_step = cfg.TRAIN.LR_DECAY_EPOCH
+            stage_optim = Optim(
+                model.get_stage_parameters(stage), "adam", cfg.TRAIN.DISCRIMINATOR_LR, 10000000,
+                lr_decay=0.5,
+                start_decay_at=0,
+                lr_decay_freq =lr_decay_step,
+            )
+            number_example = self.dataset.train._num_examples
+            updates_per_epoch = int(number_example / self.batch_size)
+            for epoch in range(600):
+                hr_images, hr_wrong_images, embeddings, _, _ = \
+                    self.dataset.train.next_batch(self.batch_size,
+                                                  cfg.TRAIN.NUM_EMBEDDING)
+    def evaluate(self):
+        config = tf.ConfigProto(allow_soft_placement=True)
+        with tf.Session(config=config) as sess:
+            with tf.device("/gpu:%d" % cfg.GPU_ID):
+                if self.model_path.find('.ckpt') != -1:
+                    self.init_opt()
+                    print("Reading model parameters from %s" % self.model_path)
+                    saver = tf.train.Saver(tf.all_variables())
+                    saver.restore(sess, self.model_path)
+                    # self.eval_one_dataset(sess, self.dataset.train,
+                    #                       self.log_dir, subset='train')
+                    count = 0
+                    print('num_examples:', dataset._num_examples)
+                    while count < dataset._num_examples:
+                        start = count % dataset._num_examples
+                        images, embeddings_batchs, savenames, captions_batchs = \
+                            dataset.next_batch_test(self.batch_size, start, 1)
 
+                        print('count = ', count, 'start = ', start)
+                        # the i-th sentence/caption
+                        for i in range(len(embeddings_batchs)):
+                            samples_batchs = []
+                            hr_samples_batchs = []
+                            # Generate up to 16 images for each sentence,
+                            # with randomness from noise z and conditioning augmentation.
+                            numSamples = np.minimum(16, cfg.TRAIN.NUM_COPY)
+                            for j in range(numSamples):
+                                hr_samples, samples = \
+                                    sess.run([self.hr_fake_images, self.fake_images],
+                                             {self.embeddings: embeddings_batchs[i]})
+                                samples_batchs.append(samples)
+                                hr_samples_batchs.append(hr_samples)
+                            self.save_super_images(images, samples_batchs,
+                                                   hr_samples_batchs,
+                                                   savenames, captions_batchs,
+                                                   i, save_dir, subset)
+
+                        count += self.batch_size
+                else:
+                    print("Input a valid model path.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train a GAN network')
@@ -86,7 +145,7 @@ if __name__ == "__main__":
         s_tmp = cfg.TRAIN.PRETRAINED_MODEL
         log_dir = s_tmp[:s_tmp.find('.ckpt')]
 
-    model = CondGAN(
+    model = StackGAN(
         lr_imsize=int(dataset.image_shape[0] / dataset.hr_lr_ratio),
         hr_lr_ratio=dataset.hr_lr_ratio
     )

@@ -7,7 +7,7 @@ from layers import custom_con2d
 
 
 class lr_generator(nn.Module):
-    def __init__(self, imsize, z_size):
+    def __init__(self, imsize, z_size, c_size):
         super(lr_generator, self).__init__()
         self.s = imsize
         self.s2, self.s4, self.s8, self.s16 = \
@@ -15,7 +15,7 @@ class lr_generator(nn.Module):
         self.gf_dim = cfg.GAN.GF_DIM
 
         self.node1_0 = nn.Sequential(
-            nn.Linear(z_size, self.s16 * self.s16 * self.gf_dim * 8),
+            nn.Linear(z_size + c_size, self.s16 * self.s16 * self.gf_dim * 8),
             nn.BatchNorm1d(self.s16 * self.s16 * self.gf_dim * 8)
         )
         self.node1_1 = nn.Sequential(
@@ -143,3 +143,23 @@ class hr_generator(nn.Module):
         out = self.node1(out)
         out = self.node2(out)
         return out
+
+class context_encoder_g(nn.Module):
+    def __init__(self, c_var_dim):
+        super(context_encoder_g, self).__init__()
+        self.ef_dim = cfg.GAN.EMBEDDING_DIM
+        self.node = nn.Sequential(
+            nn.Linear(c_var_dim, self.ef_dim * 2),
+            nn.LeakyReLU(negative_slope=0.2),
+        )
+        #TODO linear last layer?
+
+    def forward(self, input):
+        out = self.node(input)
+        mean = out[:, : self.ef_dim]
+        log_sigma = out[:, self.ef_dim :]
+        epsilon = torch.FloatTensor(mean.size(0), mean.size(1)).normal_(0, 1)
+        epsilon = torch.autograd.Variable(epsilon.cuda())
+        out = mean + torch.exp(log_sigma) * epsilon
+        kl_loss = -log_sigma + 0.5 * (-1 + torch.exp(2. * log_sigma) + torch.pow(mean, 2.))
+        return out, kl_loss

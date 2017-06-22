@@ -98,7 +98,7 @@ class hr_d_image_encoder(nn.Module):
 class discriminator(nn.Module):
     def __init__(self, high_res_model, lr_imsize):
         super(discriminator, self).__init__()
-        context_input_size = None
+        context_input_size =
         self.df_dim = cfg.GAN.DF_DIM
         self.ef_dim = cfg.GAN.EMBEDDING_DIM
         self.d_context_template = nn.Sequential(
@@ -120,6 +120,7 @@ class discriminator(nn.Module):
             nn.LeakyReLU(negative_slope=0.2),
             custom_con2d((self.s16, self.s16), self.df_dim * 8, 1, (self.s16, self.s16), (self.s16, self.s16)),
         )
+        self.logSigmoid = torch.nn.LogSigmoid()
 
     def forward(self, x_var, c_var):
         x_rep = self.d_image_template(x_var)
@@ -127,4 +128,5 @@ class discriminator(nn.Module):
         c_rep = c_rep.view((c_rep.size(0), 1, 1, c_rep.size(1)))
         c_rep = c_rep.expand(c_rep.size(0), self.s16, self.s16, c_rep.size(3))
         x_c_rep = torch.cat([x_rep, c_rep], 3)
-        return self.discriminator_combine(x_c_rep)
+        logits = self.discriminator_combine(x_c_rep).view(-1)
+        return self.logSigmoid(logits)
