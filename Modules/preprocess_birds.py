@@ -1,13 +1,11 @@
 from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 from __future__ import unicode_literals
 
 # import tensorflow as tf
 import numpy as np
 import os
 import pickle
-from misc.utils import get_image
+from Utils import get_image
 import scipy.misc
 import pandas as pd
 
@@ -19,13 +17,19 @@ import pandas as pd
 LR_HR_RETIO = 4
 IMSIZE = 256
 LOAD_SIZE = int(IMSIZE * 76 / 64)
-BIRD_DIR = 'Data/birds'
 
+suffix = "_small"
+BIRD_DIR = '../../data/birds' + suffix
+small_cnt = 100
 
 def load_filenames(data_dir):
     filepath = data_dir + 'filenames.pickle'
     with open(filepath, 'rb') as f:
         filenames = pickle.load(f)
+    if suffix == "_small":
+        print("filenames", type(filenames), len(filenames))
+        filenames = filenames[:small_cnt]
+
     print('Load filenames from: %s (%d)' % (filepath, len(filenames)))
     return filenames
 
@@ -46,7 +50,6 @@ def load_bbox(data_dir):
     for i in xrange(0, numImgs):
         # bbox = [x-left, y-top, width, height]
         bbox = df_bounding_boxes.iloc[i][1:].tolist()
-
         key = filenames[i][:-4]
         filename_bbox[key] = bbox
     #

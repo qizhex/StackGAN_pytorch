@@ -2,47 +2,27 @@
 Some codes from
 https://github.com/openai/improved-gan/blob/master/imagenet/utils.py
 """
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import scipy.misc
 import os
 import errno
 from PIL import Image, ImageDraw, ImageFont
+from torch.autograd import Variable
 
+
+def wrap_Variable(data):
+    v = Variable(data)
+    if True:
+        v = v.cuda()
+    return v
 
 def get_image(image_path, image_size, is_crop=False, bbox=None):
     global index
     out = transform(imread(image_path), image_size, is_crop, bbox)
     return out
 
-def visualization(self, n):
-    fake_sum_train, superimage_train = \
-        self.visualize_one_superimage(self.fake_images[:n * n],
-                                      self.images[:n * n],
-                                      n, "train")
-    fake_sum_test, superimage_test = \
-        self.visualize_one_superimage(self.fake_images[n * n:2 * n * n],
-                                      self.images[n * n:2 * n * n],
-                                      n, "test")
-    self.superimages = tf.concat(0, [superimage_train, superimage_test])
-    self.image_summary = tf.merge_summary([fake_sum_train, fake_sum_test])
 
-    hr_fake_sum_train, hr_superimage_train = \
-        self.visualize_one_superimage(self.hr_fake_images[:n * n],
-                                      self.hr_images[:n * n, :, :, :],
-                                      n, "hr_train")
-    hr_fake_sum_test, hr_superimage_test = \
-        self.visualize_one_superimage(self.hr_fake_images[n * n:2 * n * n],
-                                      self.hr_images[n * n:2 * n * n],
-                                      n, "hr_test")
-    self.hr_superimages = \
-        tf.concat(0, [hr_superimage_train, hr_superimage_test])
-    self.hr_image_summary = \
-        tf.merge_summary([hr_fake_sum_train, hr_fake_sum_test])
-
-def save_super_images(self, images, sample_batchs, hr_sample_batchs,
+def save_super_images(images, sample_batchs, hr_sample_batchs,
                       savenames, captions_batchs,
                       sentenceID, save_dir, subset):
     # batch_size samples for each embedding
@@ -103,10 +83,10 @@ def save_super_images(self, images, sample_batchs, hr_sample_batchs,
 
         captions = captions_batchs[j][sentenceID]
         fullpath = '%s_sentence%d.jpg' % (s_tmp, sentenceID)
-        superimage = self.drawCaption(np.uint8(superimage), captions)
+        superimage = drawCaption(np.uint8(superimage), captions)
         scipy.misc.imsave(fullpath, superimage)
 
-def drawCaption(self, img, caption):
+def drawCaption(img, caption):
     img_txt = Image.fromarray(img)
     # get a font
     fnt = ImageFont.truetype('Pillow/Tests/fonts/FreeMono.ttf', 50)

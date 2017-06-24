@@ -5,7 +5,7 @@ def tf_same_padding(in_dim, kernel_size, strides):
     in_height = in_dim[0]
     in_width = in_dim[1]
     out_height = math.ceil(float(in_height) / float(strides[0]))
-    out_width  = math.ceil(float(in_width) / float(strides[1]))
+    out_width = math.ceil(float(in_width) / float(strides[1]))
     pad_along_height = max((out_height - 1) * strides[0] +
                            kernel_size[0] - in_height, 0)
     pad_along_width = max((out_width - 1) * strides[1] +
@@ -16,7 +16,11 @@ def tf_same_padding(in_dim, kernel_size, strides):
     pad_right = pad_along_width - pad_left
     return nn.ZeroPad2d((pad_left, pad_right, pad_top, pad_bottom))
 
-class custom_con2d(nn.Module):
+def custom_con2d(img_size, channel_in, channel_out, kernel, stride=(2, 2)):
+    return nn.Conv2d(channel_in, channel_out, kernel, stride=stride)
+#TODO the input picture is 2^k, so no padding is needed
+
+'''class custom_con2d(nn.Module):
     def __init__(self, img_size, channel_in, channel_out, kernel, stride=(2, 2)):
         super(custom_con2d, self).__init__()
         self.Conv2d = nn.Conv2d(channel_in, channel_out, kernel, stride=stride)
@@ -25,4 +29,4 @@ class custom_con2d(nn.Module):
     def forward(self, input):
         out = self.pad(input)
         out = self.Conv2d(out)
-        return out
+        return out'''

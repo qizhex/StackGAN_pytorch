@@ -1,10 +1,10 @@
-from __future__ import print_function, division
 import torch
 from Modules.Config import cfg
 from torch import nn
 import math
 from discriminator import discriminator
 from generator import lr_generator, hr_generator, context_encoder_g
+from torch.autograd import Variable
 
 class StackGAN(nn.Module):
     def __init__(self, lr_imsize, hr_lr_ratio):
@@ -21,8 +21,9 @@ class StackGAN(nn.Module):
         self.s2, self.s4, self.s8, self.s16 = \
             int(self.s / 2), int(self.s / 4), int(self.s / 8), int(self.s / 16)
         # the input must be 16 * k, otherwise it's not tf padding
-        self.lr_disc = discriminator(False, lr_imsize)
-        self.hr_disc = discriminator(True, lr_imsize)
+        c_var_dim = 1024
+        self.lr_disc = discriminator(False, lr_imsize, c_var_dim)
+        self.hr_disc = discriminator(True, lr_imsize, c_var_dim)
         self.lr_generator = lr_generator(lr_imsize, self.z_dim, self.ef_dim)
         self.hr_generator = hr_generator(lr_imsize)
         self.lr_context_encoder = context_encoder_g(c_var_dim)
@@ -40,8 +41,9 @@ class StackGAN(nn.Module):
         else:
             assert False
 
-    def forward(self, embeddings, images, wrong_images, stage):
+    def forward(self, embeddings, hr_images, images, hr_wrong_images, wrong_images, stage):
         z = torch.FloatTensor(self.batch_size, self.z_dim).normal_(0, 1)
+        z = Variable(z).cuda()
         c, kl_loss = self.lr_context_encoder(embeddings)
         fake_images = self.lr_generator(torch.cat([z, c], 1))
         if stage == 1:
@@ -77,8 +79,3 @@ class criterion():
             discriminator_loss = real_d_loss + fake_d_loss
         generator_loss = self.criterion_node(fake_d_out, torch.ones(fake_d_out.size(0)))
         return discriminator_loss, generator_loss
-
-
-
-
-

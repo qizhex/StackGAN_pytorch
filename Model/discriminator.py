@@ -1,4 +1,3 @@
-from __future__ import print_function, division
 import torch
 from Modules.Config import cfg
 from torch import nn
@@ -12,6 +11,7 @@ class d_image_encoder(nn.Module):
         kernel_0 = (4, 4)
         self.s2, self.s4, self.s8, self.s16 = \
             int(self.s / 2), int(self.s / 4), int(self.s / 8), int(self.s / 16)
+        self.df_dim = cfg.GAN.DF_DIM
 
         self.node_d_0 = nn.Sequential(
             custom_con2d((self.s, self.s), 3, self.df_dim, kernel_0),
@@ -46,7 +46,10 @@ class hr_d_image_encoder(nn.Module):
     def __init__(self, imsize): #ori image size, *4
         super(hr_d_image_encoder, self).__init__()
         self.s = imsize
+        self.s2, self.s4, self.s8, self.s16 = \
+            int(self.s / 2), int(self.s / 4), int(self.s / 8), int(self.s / 16)
         kernel_0 = (4, 4)
+        self.df_dim = cfg.GAN.DF_DIM
         self.node_d_0 = nn.Sequential(
             custom_con2d((self.s * 4, self.s * 4), 3, self.df_dim, kernel_0),
             nn.LeakyReLU(negative_slope=0.2),
@@ -96,13 +99,12 @@ class hr_d_image_encoder(nn.Module):
         return out
 
 class discriminator(nn.Module):
-    def __init__(self, high_res_model, lr_imsize):
+    def __init__(self, high_res_model, lr_imsize, c_size):
         super(discriminator, self).__init__()
-        context_input_size =
         self.df_dim = cfg.GAN.DF_DIM
         self.ef_dim = cfg.GAN.EMBEDDING_DIM
         self.d_context_template = nn.Sequential(
-            nn.Linear(context_input_size, self.ef_dim),
+            nn.Linear(c_size, self.ef_dim),
             nn.LeakyReLU(negative_slope=0.2),
         )
         self.s = lr_imsize
@@ -113,9 +115,9 @@ class discriminator(nn.Module):
             self.d_image_template = d_image_encoder(self.s)
         else:
             self.d_image_template = hr_d_image_encoder(self.s)
-        assert self.ef_dim == self.df_dim
+        #assert self.ef_dim == self.df_dim
         self.discriminator_combine = nn.Sequential(
-            custom_con2d((self.s16, self.s16), self.df_dim * 9, self.df_dim * 8, (1, 1), (1, 1)),
+            custom_con2d((self.s16, self.s16), self.df_dim + self.ef_dim, self.df_dim * 8, (1, 1), (1, 1)),
             nn.BatchNorm2d(self.df_dim * 2),
             nn.LeakyReLU(negative_slope=0.2),
             custom_con2d((self.s16, self.s16), self.df_dim * 8, 1, (self.s16, self.s16), (self.s16, self.s16)),

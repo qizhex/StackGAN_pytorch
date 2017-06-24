@@ -1,4 +1,3 @@
-from __future__ import print_function, division
 import torch
 from Modules.Config import cfg
 from torch import nn

@@ -1,17 +1,16 @@
-from __future__ import division
-from __future__ import print_function
-
-
 import numpy as np
 import pickle
 import random
-
+import torch
+from torch.autograd import Variable
+from Utils import wrap_Variable
+import torchvision
 
 class Dataset(object):
     def __init__(self, images, imsize, embeddings=None,
                  filenames=None, workdir=None,
                  labels=None, aug_flag=True,
-                 class_id=None, class_range=None):
+                 class_id=None, class_range=None, hr_lr_ratio=None):
         self._images = images
         self._embeddings = embeddings
         self._filenames = filenames
@@ -20,6 +19,7 @@ class Dataset(object):
         self._epochs_completed = -1
         self._num_examples = len(images)
         self._saveIDs = self.saveIDs()
+        self.hr_lr_ratio = hr_lr_ratio
 
         # shuffle on first run
         self._index_in_epoch = self._num_examples
@@ -28,6 +28,9 @@ class Dataset(object):
         self._class_range = class_range
         self._imsize = imsize
         self._perm = None
+        self.toPIL = torchvision.transforms.ToPILImage()
+        self.toTensor = torchvision.transforms.ToTensor()
+        self.resize_lr = torchvision.transforms.Scale(self._imsize // self.hr_lr_ratio)
 
     @property
     def images(self):
@@ -69,20 +72,31 @@ class Dataset(object):
     def transform(self, images):
         if self._aug_flag:
             transformed_images =\
-                np.zeros([images.shape[0], self._imsize, self._imsize, 3])
+                torch.zeros(images.shape[0], 3, self._imsize, self._imsize)
+            lr_images = torch.zeros(images.shape[0], 3, self._imsize // self.hr_lr_ratio, self._imsize // self.hr_lr_ratio)
             ori_size = images.shape[1]
             for i in range(images.shape[0]):
-                h1 = np.floor((ori_size - self._imsize) * np.random.random())
-                w1 = np.floor((ori_size - self._imsize) * np.random.random())
+                h1 = int(np.floor((ori_size - self._imsize) * np.random.random()))
+                w1 = int(np.floor((ori_size - self._imsize) * np.random.random()))
                 cropped_image =\
                     images[i][w1: w1 + self._imsize, h1: h1 + self._imsize, :]
                 if random.random() > 0.5:
-                    transformed_images[i] = np.fliplr(cropped_image)
+                    #transformed_images[i] = np.fliplr(cropped_image)
+                    current_image = np.fliplr(cropped_image)
                 else:
-                    transformed_images[i] = cropped_image
-            return transformed_images
+                    current_image = cropped_image
+                    #transformed_images[i] = cropped_image
+                current_image = self.toPIL(current_image)
+                lr_image = self.toTensor(self.resize_lr(current_image)) * 2. - 1
+                current_image = self.toTensor(current_image) * 2. - 1
+                transformed_images[i] = current_image
+                lr_images[i] = lr_image
+            #return transformed_images
+
+            return wrap_Variable(transformed_images), wrap_Variable(lr_images)
         else:
-            return images
+            assert False
+            return wrap_Variable(torch.FloatTensor(images.tolist()))
 
     def sample_embeddings(self, embeddings, filenames, class_id, sample_num):
         if len(embeddings.shape) == 2 or embeddings.shape[1] == 1:
@@ -136,14 +150,14 @@ class Dataset(object):
 
         sampled_images = self._images[current_ids]
         sampled_wrong_images = self._images[fake_ids, :, :, :]
-        sampled_images = sampled_images.astype(np.float32)
-        sampled_wrong_images = sampled_wrong_images.astype(np.float32)
-        sampled_images = sampled_images * (2. / 255) - 1.
-        sampled_wrong_images = sampled_wrong_images * (2. / 255) - 1.
+        #sampled_images = sampled_images.astype(np.float32)
+        #sampled_wrong_images = sampled_wrong_images.astype(np.float32)
+        #sampled_images = sampled_images * (2. / 255) - 1.
+        #sampled_wrong_images = sampled_wrong_images * (2. / 255) - 1.
 
-        sampled_images = self.transform(sampled_images)
-        sampled_wrong_images = self.transform(sampled_wrong_images)
-        ret_list = [sampled_images, sampled_wrong_images]
+        sampled_images, sampled_lr_images = self.transform(sampled_images)
+        sampled_wrong_images, sampled_lr_wrong_images = self.transform(sampled_wrong_images)
+        ret_list = [sampled_images, sampled_lr_images, sampled_wrong_images, sampled_lr_wrong_images]
 
         if self._embeddings is not None:
             filenames = [self._filenames[i] for i in current_ids]
@@ -151,6 +165,7 @@ class Dataset(object):
             sampled_embeddings, sampled_captions = \
                 self.sample_embeddings(self._embeddings[current_ids],
                                        filenames, class_id, window)
+            sampled_embeddings = wrap_Variable(torch.FloatTensor(sampled_embeddings.tolist()))
             ret_list.append(sampled_embeddings)
             ret_list.append(sampled_captions)
         else:
@@ -161,6 +176,7 @@ class Dataset(object):
             ret_list.append(self._labels[current_ids])
         else:
             ret_list.append(None)
+
         return ret_list
 
     def next_batch_test(self, batch_size, start, max_captions):
@@ -172,9 +188,9 @@ class Dataset(object):
             end = start + batch_size
 
         sampled_images = self._images[start:end]
-        sampled_images = sampled_images.astype(np.float32)
+        #sampled_images = sampled_images.astype(np.float32)
         # from [0, 255] to [-1.0, 1.0]
-        sampled_images = sampled_images * (2. / 255) - 1.
+        #sampled_images = sampled_images * (2. / 255) - 1.
         sampled_images = self.transform(sampled_images)
 
         sampled_embeddings = self._embeddings[start:end]
@@ -196,7 +212,6 @@ class Dataset(object):
 
         return [sampled_images, sampled_embeddings_batchs,
                 self._saveIDs[start:end], sampled_captions]
-
 
 class TextDataset(object):
     def __init__(self, workdir, embedding_type, hr_lr_ratio):
@@ -223,7 +238,6 @@ class TextDataset(object):
         with open(pickle_path + self.image_filename, 'rb') as f:
             images = pickle.load(f)
             images = np.array(images)
-            print('images: ', images.shape)
 
         with open(pickle_path + self.embedding_filename, 'rb') as f:
             embeddings = pickle.load(f)
@@ -235,7 +249,6 @@ class TextDataset(object):
             print('list_filenames: ', len(list_filenames), list_filenames[0])
         with open(pickle_path + '/class_info.pickle', 'rb') as f:
             class_id = pickle.load(f)
-
         return Dataset(images, self.image_shape[0], embeddings,
                        list_filenames, self.workdir, None,
-                       aug_flag, class_id)
+                       aug_flag, class_id, None, self.hr_lr_ratio)
