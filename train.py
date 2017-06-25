@@ -56,6 +56,7 @@ class CondGANTrainer(object):
         print len(captions_batchs), len(captions_batchs[0])
         print len(embeddings_batchs)
         print embeddings_batchs[0].shape #
+        print type(images), len(images)
         numSamples = min(16, cfg.TRAIN.NUM_COPY)
         samples_batchs = []
         hr_samples_batchs = []

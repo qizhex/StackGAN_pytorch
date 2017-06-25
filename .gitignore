@@ -1,0 +1,17 @@
+data
+to_label
+*resources*
+*slurm*
+*obj*
+*.idea*
+*.pyc
+*.iml
+*output*
+*cluster*
+*cluster*
+dynet
+.idea
+results
+rc_total
+model*
+*.pyc

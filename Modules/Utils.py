@@ -8,7 +8,8 @@ import os
 import errno
 from PIL import Image, ImageDraw, ImageFont
 from torch.autograd import Variable
-
+import torchvision
+import torch
 
 def wrap_Variable(data):
     v = Variable(data)
@@ -28,88 +29,41 @@ def save_super_images(images, sample_batchs, hr_sample_batchs,
     # batch_size samples for each embedding
     # Up to 16 samples for each text embedding/sentence
     numSamples = len(sample_batchs)
+    images = images.data.cpu()
+    resize = torchvision.transforms.Compose(
+        [torchvision.transforms.Lambda(lambda x: (x + 1) * 255. / 2),
+        torchvision.transforms.ToPILImage(),
+        torchvision.transforms.Scale((images[0].size(1), images[0].size(2))),
+         torchvision.transforms.ToTensor()])
+    sample_batchs = [[resize(li[i].data.cpu()) for i in range(li.size(0))] for li in sample_batchs]
+    hr_sample_batchs = [[resize(li[i].data.cpu()) for i in range(li.size(0))] for li in hr_sample_batchs]
+    images = [resize(images[s]) for s in range(images.size(0))]
     for j in range(len(savenames)):
         s_tmp = '%s-1real-%dsamples/%s/%s' % \
                 (save_dir, numSamples, subset, savenames[j])
+        hr_images_to_show = []
+        lr_images_to_show = []
         folder = s_tmp[:s_tmp.rfind('/')]
         if not os.path.isdir(folder):
             print('Make a new folder: ', folder)
             mkdir_p(folder)
 
-        # First row with up to 8 samples
-        real_img = (images[j] + 1.0) * 127.5
-        img_shape = real_img.shape
-        padding0 = np.zeros(img_shape)
-        padding = np.zeros((img_shape[0], 20, 3))
+        real_img = images[j]
 
-        row1 = [padding0, real_img, padding]
-        row2 = [padding0, real_img, padding]
-        for i in range(np.minimum(8, numSamples)):
+        hr_images_to_show.append(real_img)
+        lr_images_to_show.append(real_img)
+        for i in range(len(sample_batchs)):
             lr_img = sample_batchs[i][j]
             hr_img = hr_sample_batchs[i][j]
-            hr_img = (hr_img + 1.0) * 127.5
-            re_sample = scipy.misc.imresize(lr_img, hr_img.shape[:2])
-            row1.append(re_sample)
-            row2.append(hr_img)
-        row1 = np.concatenate(row1, axis=1)
-        row2 = np.concatenate(row2, axis=1)
-        superimage = np.concatenate([row1, row2], axis=0)
-
-        # Second 8 samples with up to 8 samples
-        if len(sample_batchs) > 8:
-            row1 = [padding0, real_img, padding]
-            row2 = [padding0, real_img, padding]
-            for i in range(8, len(sample_batchs)):
-                lr_img = sample_batchs[i][j]
-                hr_img = hr_sample_batchs[i][j]
-                hr_img = (hr_img + 1.0) * 127.5
-                re_sample = scipy.misc.imresize(lr_img, hr_img.shape[:2])
-                row1.append(re_sample)
-                row2.append(hr_img)
-            row1 = np.concatenate(row1, axis=1)
-            row2 = np.concatenate(row2, axis=1)
-            super_row = np.concatenate([row1, row2], axis=0)
-            superimage2 = np.zeros_like(superimage)
-            superimage2[:super_row.shape[0],
-            :super_row.shape[1],
-            :super_row.shape[2]] = super_row
-            mid_padding = np.zeros((64, superimage.shape[1], 3))
-            superimage = np.concatenate([superimage, mid_padding,
-                                         superimage2], axis=0)
-
-        top_padding = np.zeros((128, superimage.shape[1], 3))
-        superimage = \
-            np.concatenate([top_padding, superimage], axis=0)
-
+            lr_images_to_show.append(lr_img)
+            hr_images_to_show.append(hr_img)
         captions = captions_batchs[j][sentenceID]
         fullpath = '%s_sentence%d.jpg' % (s_tmp, sentenceID)
-        superimage = drawCaption(np.uint8(superimage), captions)
-        scipy.misc.imsave(fullpath, superimage)
-
-def drawCaption(img, caption):
-    img_txt = Image.fromarray(img)
-    # get a font
-    fnt = ImageFont.truetype('Pillow/Tests/fonts/FreeMono.ttf', 50)
-    # get a drawing context
-    d = ImageDraw.Draw(img_txt)
-
-    # draw text, half opacity
-    d.text((10, 256), 'Stage-I', font=fnt, fill=(255, 255, 255, 255))
-    d.text((10, 512), 'Stage-II', font=fnt, fill=(255, 255, 255, 255))
-    if img.shape[0] > 832:
-        d.text((10, 832), 'Stage-I', font=fnt, fill=(255, 255, 255, 255))
-        d.text((10, 1088), 'Stage-II', font=fnt, fill=(255, 255, 255, 255))
-
-    idx = caption.find(' ', 60)
-    if idx == -1:
-        d.text((256, 10), caption, font=fnt, fill=(255, 255, 255, 255))
-    else:
-        cap1 = caption[:idx]
-        cap2 = caption[idx+1:]
-        d.text((256, 10), cap1, font=fnt, fill=(255, 255, 255, 255))
-        d.text((256, 60), cap2, font=fnt, fill=(255, 255, 255, 255))
-
-    return img_txt
+        two_row_image = hr_images_to_show + lr_images_to_show
+        two_row_image_tensor = torch.zeros(len(two_row_image), *two_row_image[0].size())
+        for i in range(len(two_row_image)):
+            two_row_image_tensor[i] = two_row_image[i]
+        torchvision.utils.save_image(two_row_image_tensor, fullpath, nrow=1+len(sample_batchs))
 
 def custom_crop(img, bbox):
     # bbox = [x-left, y-top, width, height]
