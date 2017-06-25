@@ -2,7 +2,6 @@ CONFIG_NAME: 'stageI'
 
 DATASET_NAME: 'flowers'
 EMBEDDING_TYPE: 'cnn-rnn'
-GPU_ID: 0
 Z_DIM: 100
 
 TRAIN:

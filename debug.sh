@@ -1,1 +1,1 @@
-python train.py --cfg Config/birds_small/ --gpu 0
+python train.py --cfg Config/birds_small/  

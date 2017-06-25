@@ -25,11 +25,11 @@ class lr_generator(nn.Module):
             nn.BatchNorm2d(self.gf_dim * 2),
             nn.ReLU(),
             custom_con2d((self.s16, self.s16), self.gf_dim * 2, self.gf_dim * 8, (3, 3), (1, 1)),
-            nn.BatchNorm2d(self.gf_dim * 2)
+            nn.BatchNorm2d(self.gf_dim * 8)
         )
         self.node2_0 = nn.Sequential(
             nn.UpsamplingNearest2d((self.s8, self.s8)),
-            custom_con2d((self.s8, self.s8), self.gf_dim * 2, self.gf_dim * 4, (3, 3), (1, 1)),
+            custom_con2d((self.s8, self.s8), self.gf_dim * 8, self.gf_dim * 4, (3, 3), (1, 1)),
             nn.BatchNorm2d(self.gf_dim * 4)
         )
         self.node2_1 = nn.Sequential(
@@ -58,7 +58,7 @@ class lr_generator(nn.Module):
         self.activ = nn.ReLU()
 
     def forward(self, z):
-        out1_0 = self.node1_0(z).view(-1, self.s16, self.s16, self.gf_dim * 8)
+        out1_0 = self.node1_0(z).view(-1, self.gf_dim * 8, self.s16, self.s16)
         out1 = self.activ(out1_0 + self.node1_1(out1_0))
         out2_0 = self.node2_0(out1)
         out2 = self.activ(out2_0 + self.node2_1(out2_0))
@@ -135,9 +135,9 @@ class hr_generator(nn.Module):
     # TODO  c directly input
     def forward(self, x, c):
         x_rep = self.encode_image(x)
-        c_rep = c.view(c.size(0), 1, 1, c.size(1))
-        c_rep = c_rep.expand((c_rep.size(0), self.s4, self.s4, c_rep.size(3)))
-        x_c_rep = torch.cat([x_rep, c_rep], 3)
+        c_rep = c.view(c.size(0), c.size(1), 1, 1)
+        c_rep = c_rep.expand((c_rep.size(0), c_rep.size(1), self.s4, self.s4))
+        x_c_rep = torch.cat([x_rep, c_rep], 1)
         out = self.node0(x_c_rep)
         out = self.node1(out)
         out = self.node2(out)
@@ -158,7 +158,10 @@ class context_encoder_g(nn.Module):
         mean = out[:, : self.ef_dim]
         log_sigma = out[:, self.ef_dim :]
         epsilon = torch.FloatTensor(mean.size(0), mean.size(1)).normal_(0, 1)
-        epsilon = torch.autograd.Variable(epsilon.cuda())
+        epsilon = torch.autograd.Variable(epsilon)
+        if cfg.GPU_ID != -1:
+            epsilon = epsilon.cuda()
         out = mean + torch.exp(log_sigma) * epsilon
         kl_loss = -log_sigma + 0.5 * (-1 + torch.exp(2. * log_sigma) + torch.pow(mean, 2.))
+        kl_loss = kl_loss.mean(1)
         return out, kl_loss

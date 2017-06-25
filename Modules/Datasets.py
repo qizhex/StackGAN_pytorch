@@ -208,9 +208,9 @@ class Dataset(object):
 
         for i in range(np.minimum(max_captions, embedding_num)):
             batch = sampled_embeddings[:, i, :]
-            sampled_embeddings_batchs.append(np.squeeze(batch))
+            sampled_embeddings_batchs.append(wrap_Variable(torch.FloatTensor(np.squeeze(batch))))
 
-        return [sampled_images, sampled_embeddings_batchs,
+        return [sampled_images, lr_images, sampled_embeddings_batchs,
                 self._saveIDs[start:end], sampled_captions]
 
 class TextDataset(object):

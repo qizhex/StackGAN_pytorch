@@ -85,12 +85,6 @@ class hr_d_image_encoder(nn.Module):
             nn.BatchNorm2d(self.df_dim * 8),
         )
         self.activ = nn.LeakyReLU(negative_slope=0.2)
-        self.init_weight()
-
-    #TODO initialize all
-    def init_weight(self, std_dev=0.02):
-        for p in self.parameters():
-            p.data.normal_(0, std_dev)
 
     def forward(self, img):
         n0 = self.node_d_0(img)
@@ -112,23 +106,24 @@ class discriminator(nn.Module):
             int(self.s / 2), int(self.s / 4), int(self.s / 8), int(self.s / 16)
         #channel should be put in the second dimension (the first is mini-batch)
         if high_res_model:
-            self.d_image_template = d_image_encoder(self.s)
-        else:
             self.d_image_template = hr_d_image_encoder(self.s)
+        else:
+            self.d_image_template = d_image_encoder(self.s)
         #assert self.ef_dim == self.df_dim
         self.discriminator_combine = nn.Sequential(
-            custom_con2d((self.s16, self.s16), self.df_dim + self.ef_dim, self.df_dim * 8, (1, 1), (1, 1)),
-            nn.BatchNorm2d(self.df_dim * 2),
+            custom_con2d((self.s16, self.s16), self.df_dim * 8 + self.ef_dim, self.df_dim * 8, (1, 1), (1, 1)),
+            nn.BatchNorm2d(self.df_dim * 8),
             nn.LeakyReLU(negative_slope=0.2),
             custom_con2d((self.s16, self.s16), self.df_dim * 8, 1, (self.s16, self.s16), (self.s16, self.s16)),
         )
-        self.logSigmoid = torch.nn.LogSigmoid()
+        #self.logSigmoid = torch.nn.LogSigmoid()
 
     def forward(self, x_var, c_var):
         x_rep = self.d_image_template(x_var)
         c_rep = self.d_context_template(c_var)
-        c_rep = c_rep.view((c_rep.size(0), 1, 1, c_rep.size(1)))
-        c_rep = c_rep.expand(c_rep.size(0), self.s16, self.s16, c_rep.size(3))
-        x_c_rep = torch.cat([x_rep, c_rep], 3)
+        c_rep = c_rep.view((c_rep.size(0), c_rep.size(1), 1, 1))
+        c_rep = c_rep.expand(c_rep.size(0), c_rep.size(1), self.s16, self.s16)
+        x_c_rep = torch.cat([x_rep, c_rep], 1)
         logits = self.discriminator_combine(x_c_rep).view(-1)
-        return self.logSigmoid(logits)
+        #return self.logSigmoid(logits)
+        return logits

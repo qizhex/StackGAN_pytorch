@@ -10,10 +10,11 @@ from PIL import Image, ImageDraw, ImageFont
 from torch.autograd import Variable
 import torchvision
 import torch
+from Config import cfg
 
 def wrap_Variable(data):
     v = Variable(data)
-    if True:
+    if cfg.GPU_ID != -1:
         v = v.cuda()
     return v
 
@@ -31,12 +32,16 @@ def save_super_images(images, sample_batchs, hr_sample_batchs,
     numSamples = len(sample_batchs)
     images = images.data.cpu()
     resize = torchvision.transforms.Compose(
-        [torchvision.transforms.Lambda(lambda x: (x + 1) * 255. / 2),
+        [torchvision.transforms.Lambda(lambda x: (x + 1) / 2), #* 255.
         torchvision.transforms.ToPILImage(),
         torchvision.transforms.Scale((images[0].size(1), images[0].size(2))),
-         torchvision.transforms.ToTensor()])
+        torchvision.transforms.ToTensor()
+        ])
     sample_batchs = [[resize(li[i].data.cpu()) for i in range(li.size(0))] for li in sample_batchs]
-    hr_sample_batchs = [[resize(li[i].data.cpu()) for i in range(li.size(0))] for li in hr_sample_batchs]
+    if hr_sample_batchs[0] is None:
+        hr_sample_batchs = [[resize(-torch.ones(3, 1, 1)) for j in range(len(sample_batchs[0]))] for li in hr_sample_batchs]
+    else:
+        hr_sample_batchs = [[resize(li[i].data.cpu()) for i in range(li.size(0))] for li in hr_sample_batchs]
     images = [resize(images[s]) for s in range(images.size(0))]
     for j in range(len(savenames)):
         s_tmp = '%s-1real-%dsamples/%s/%s' % \

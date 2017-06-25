@@ -6,7 +6,7 @@ import pprint
 
 from Modules.Optim import Optim
 from Modules.Datasets import TextDataset
-from Model.model import StackGAN
+from Model.model import StackGAN, criterion
 from Modules.Utils import mkdir_p, save_super_images
 from Modules.Config import cfg, cfg_from_file
 import path
@@ -39,39 +39,37 @@ class CondGANTrainer(object):
         self.lr_image_shape = [int(self.hr_image_shape[0] / ratio),
                                int(self.hr_image_shape[1] / ratio),
                                self.hr_image_shape[2]]
-
+        self.criterion = criterion()
         print('hr_image_shape', self.hr_image_shape)
         print('lr_image_shape', self.lr_image_shape)
 
-    def train(self):
+    def sample_super_image(self, stage):
+        print "sampling image"
+        num_caption = 1
+        hr_images, lr_images, embeddings_batchs, savenames, captions_batchs = \
+            self.dataset.train.next_batch_test(self.batch_size, 0, num_caption)
+        numSamples = min(16, cfg.TRAIN.NUM_COPY)
+        samples_batchs = []
+        hr_samples_batchs = []
+        for i in range(num_caption):
+            for j in range(numSamples):
+                fake_d_out, real_d_out, wrong_d_out, kl_loss, samples, hr_samples = \
+                    self.model(embeddings_batchs[i], hr_images, lr_images, hr_images, lr_images, stage)
+                hr_samples_batchs.append(hr_samples)
+                samples_batchs.append(samples)
+            save_super_images(hr_images, samples_batchs,
+                              hr_samples_batchs,
+                              savenames, captions_batchs,
+                              i, self.log_dir, "test")
 
+    def train(self):
         if len(self.model_path) > 0:
             print("Reading model parameters from %s" % self.model_path)
         for p in model.parameters():
             p.data.normal_(0, 0.02)
-        images, embeddings_batchs, savenames, captions_batchs = \
-            self.dataset.train.next_batch_test(self.batch_size, 0, 1)
-        #embeddings_batchs list of 1 batch * 1024
-        print len(savenames)
-        print len(captions_batchs), len(captions_batchs[0])
-        print len(embeddings_batchs)
-        print embeddings_batchs[0].shape #
-        print type(images), len(images)
-        numSamples = min(16, cfg.TRAIN.NUM_COPY)
-        samples_batchs = []
-        hr_samples_batchs = []
-
-        for i in range(1):
-            for j in range(numSamples):
-                hr_samples, samples = images, images
-                hr_samples_batchs.append(hr_samples)
-                samples_batchs.append(samples)
-            save_super_images(images, samples_batchs,
-                                   hr_samples_batchs,
-                                   savenames, captions_batchs,
-                                   i, self.log_dir, "test")
-
+        update_count = 0
         for stage in [1, 2]:
+            print "stage", stage
             cfg_from_file(args.cfg_file + "stage%d.yml" % stage)
             lr_decay_step = cfg.TRAIN.LR_DECAY_EPOCH
             stage_optim = Optim(
@@ -82,12 +80,24 @@ class CondGANTrainer(object):
             )
             number_example = self.dataset.train._num_examples
             updates_per_epoch = int(number_example / self.batch_size)
-            for epoch in range(600):
+            for epoch in range(cfg.TRAIN.MAX_EPOCH):
                 for i in range(updates_per_epoch):
+                    model.zero_grad()
                     hr_images, lr_images, hr_wrong_images, lr_wrong_images, embeddings, _, _ = \
-                        self.dataset.train.next_batch(self.batch_size,
-                                                      cfg.TRAIN.NUM_EMBEDDING)
-                    self.model(embeddings, hr_images, lr_images, hr_wrong_images, lr_wrong_images, stage)
+                        self.dataset.train.next_batch(self.batch_size, cfg.TRAIN.NUM_EMBEDDING)
+                    fake_d_out, real_d_out, wrong_d_out, kl_loss, fake_images, hr_fake_images = \
+                        self.model(embeddings, hr_images, lr_images, hr_wrong_images, lr_wrong_images, stage)
+                    disc_loss, gen_loss = self.criterion.evaluate_cost(fake_d_out, real_d_out, wrong_d_out)
+                    #print gen_loss.size(), kl_loss.size()
+                    gen_loss += kl_loss.sum()
+                    total_loss = disc_loss + gen_loss
+                    batch_size = hr_images.size(0)
+                    total_loss.div(batch_size).backward()
+                    stage_optim.step()
+                    update_count += 1
+                    if update_count % cfg.TRAIN.SNAPSHOT_INTERVAL == 0:
+                        print "stage: %d epoch: %d total update: %d, loss: %.5f, gen_loss: %.5f, disc_loss: %.5f" % (stage, epoch, update_count, total_loss.data[0], gen_loss.data[0], disc_loss.data[0])
+                        self.sample_super_image(stage)
 
     def evaluate(self):
         if self.model_path.find('.ckpt') != -1:
@@ -157,7 +167,7 @@ if __name__ == "__main__":
     if cfg.TRAIN.FLAG:
         filename_train = '%s/train' % (datadir)
         dataset.train = dataset.get_data(filename_train)
-        log_dir = "ckt_logs/%s/%s_%s" % \
+        log_dir = "../ckt_logs/%s/%s_%s" % \
                   (cfg.DATASET_NAME, cfg.CONFIG_NAME, timestamp)
         mkdir_p(log_dir)
     else:
@@ -168,7 +178,8 @@ if __name__ == "__main__":
         lr_imsize=int(dataset.image_shape[0] / dataset.hr_lr_ratio),
         hr_lr_ratio=dataset.hr_lr_ratio
     )
-    model.cuda()
+    if cfg.GPU_ID != -1:
+        model.cuda()
     algo = CondGANTrainer(
         model=model,
         dataset=dataset,

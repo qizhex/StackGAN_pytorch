@@ -2,7 +2,6 @@ CONFIG_NAME: 'stageII'
 
 DATASET_NAME: 'birds_small'
 EMBEDDING_TYPE: 'cnn-rnn'
-GPU_ID: 0
 Z_DIM: 100
 
 TRAIN:
@@ -21,6 +20,6 @@ TRAIN:
       KL: 2.0
 
 GAN:
-    EMBEDDING_DIM: 5
+    EMBEDDING_DIM: 11
     DF_DIM: 7
     GF_DIM: 9

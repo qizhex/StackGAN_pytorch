@@ -10,7 +10,7 @@ cfg = __C
 __C.DATASET_NAME = 'birds'
 __C.EMBEDDING_TYPE = 'cnn-rnn'
 __C.CONFIG_NAME = ''
-__C.GPU_ID = 0
+__C.GPU_ID = -1
 __C.Z_DIM = 100
 
 # Demo/test options

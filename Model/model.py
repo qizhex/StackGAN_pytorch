@@ -43,39 +43,56 @@ class StackGAN(nn.Module):
 
     def forward(self, embeddings, hr_images, images, hr_wrong_images, wrong_images, stage):
         z = torch.FloatTensor(self.batch_size, self.z_dim).normal_(0, 1)
-        z = Variable(z).cuda()
+        z = Variable(z)
+        if cfg.GPU_ID != -1:
+            z = z.cuda()
         c, kl_loss = self.lr_context_encoder(embeddings)
+        kl_loss = kl_loss * cfg.TRAIN.COEFF.KL
         fake_images = self.lr_generator(torch.cat([z, c], 1))
         if stage == 1:
             fake_d_out = self.lr_disc(fake_images, embeddings)
             real_d_out = self.lr_disc(images, embeddings)
             wrong_d_out = self.lr_disc(wrong_images, embeddings)
-            kl_loss = kl_loss * cfg.TRAIN.COEFF.KL
+            hr_fake_images = None
         elif stage == 2:
             hr_c, hr_kl_loss = self.hr_context_encoder(embeddings)
             hr_kl_loss *= cfg.TRAIN.COEFF.KL
             hr_fake_images = self.hr_generator(fake_images, hr_c)
-            fake_d_out = self.hr_disc(fake_images, embeddings)
-            real_d_out = self.hr_disc(images, embeddings)
-            wrong_d_out = self.hr_disc(wrong_images, embeddings)
+            fake_d_out = self.hr_disc(hr_fake_images, embeddings)
+            real_d_out = self.hr_disc(hr_images, embeddings)
+            wrong_d_out = self.hr_disc(hr_wrong_images, embeddings)
             kl_loss = hr_kl_loss
-            fake_images = hr_fake_images
         else:
             assert False
-        return fake_d_out, real_d_out, wrong_d_out, kl_loss, fake_images
+        return fake_d_out, real_d_out, wrong_d_out, kl_loss, fake_images, hr_fake_images
+
+class StableBCELoss(nn.modules.Module):
+    def __init__(self):
+        super(StableBCELoss, self).__init__()
+
+    def forward(self, input, target):
+        neg_abs = -input.abs()
+        loss = input.clamp(min=0) - input * target + (1 + neg_abs.exp()).log()
+        return loss.sum() #size average=False
 
 class criterion():
     def __init__(self):
-        self.criterion_node = torch.nn.BCELoss(size_average=False)
-        self.criterion_node = criterion.cuda()
+        self.criterion_node = StableBCELoss()
+        if cfg.GPU_ID != -1:
+            self.criterion_node = self.criterion_node.cuda()
 
     def evaluate_cost(self, fake_d_out, real_d_out, wrong_d_out):
-        real_d_loss = self.criterion_node(real_d_out, torch.ones(fake_d_out.size(0)))
-        wrong_d_loss = self.criterion_node(wrong_d_out, torch.zeros(wrong_d_out.size(0)))
-        fake_d_loss = self.criterion_node(fake_d_out, torch.zeros(fake_d_out.size(0)))
+        ones = Variable(torch.ones(fake_d_out.size(0)))
+        zeros = Variable(torch.zeros(fake_d_out.size(0)))
+        if cfg.GPU_ID != -1:
+            ones = ones.cuda()
+            zeros = zeros.cuda()
+        real_d_loss = self.criterion_node(real_d_out, ones)
+        wrong_d_loss = self.criterion_node(wrong_d_out, zeros)
+        fake_d_loss = self.criterion_node(fake_d_out, zeros)
         if cfg.TRAIN.B_WRONG:
             discriminator_loss = real_d_loss + (wrong_d_loss + fake_d_loss) / 2.
         else:
             discriminator_loss = real_d_loss + fake_d_loss
-        generator_loss = self.criterion_node(fake_d_out, torch.ones(fake_d_out.size(0)))
+        generator_loss = self.criterion_node(fake_d_out, ones)
         return discriminator_loss, generator_loss
