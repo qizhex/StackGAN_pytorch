@@ -136,7 +136,7 @@ class hr_generator(nn.Module):
     def forward(self, x, c):
         x_rep = self.encode_image(x)
         c_rep = c.view(c.size(0), c.size(1), 1, 1)
-        c_rep = c_rep.expand((c_rep.size(0), c_rep.size(1), self.s4, self.s4))
+        c_rep = c_rep.expand(c_rep.size(0), c_rep.size(1), self.s4, self.s4)
         x_c_rep = torch.cat([x_rep, c_rep], 1)
         out = self.node0(x_c_rep)
         out = self.node1(out)

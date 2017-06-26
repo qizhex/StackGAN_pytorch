@@ -10,6 +10,7 @@ from Model.model import StackGAN, criterion
 from Modules.Utils import mkdir_p, save_super_images
 from Modules.Config import cfg, cfg_from_file
 import path
+import torch
 
 class CondGANTrainer(object):
     def __init__(self,
@@ -65,6 +66,7 @@ class CondGANTrainer(object):
     def train(self):
         if len(self.model_path) > 0:
             print("Reading model parameters from %s" % self.model_path)
+        model = self.model
         for p in model.parameters():
             p.data.normal_(0, 0.02)
         update_count = 0
@@ -98,34 +100,27 @@ class CondGANTrainer(object):
                     if update_count % cfg.TRAIN.SNAPSHOT_INTERVAL == 0:
                         print "stage: %d epoch: %d total update: %d, loss: %.5f, gen_loss: %.5f, disc_loss: %.5f" % (stage, epoch, update_count, total_loss.data[0], gen_loss.data[0], disc_loss.data[0])
                         self.sample_super_image(stage)
+                        torch.save(model, "%s/%s.ckpt" % (self.checkpoint_dir, self.exp_name))
+
 
     def evaluate(self):
-        if self.model_path.find('.ckpt') != -1:
-            self.init_opt()
+        if self.model_path.find('ckpt') != -1:
             print("Reading model parameters from %s" % self.model_path)
-            saver = tf.train.Saver(tf.all_variables())
-            saver.restore(sess, self.model_path)
-            # self.eval_one_dataset(sess, self.dataset.train,
-            #                       self.log_dir, subset='train')
+            test_data = self.dataset.test
+            print('num_examples:', test_data._num_examples)
             count = 0
-            print('num_examples:', dataset._num_examples)
-            while count < dataset._num_examples:
-                start = count % dataset._num_examples
+            while count < test_data._num_examples:
+                start = count % test_data._num_examples
                 images, embeddings_batchs, savenames, captions_batchs = \
-                    dataset.next_batch_test(self.batch_size, start, 1)
+                    test_data.next_batch_test(self.batch_size, start, 1)
 
                 print('count = ', count, 'start = ', start)
                 # the i-th sentence/caption
                 for i in range(len(embeddings_batchs)):
                     samples_batchs = []
                     hr_samples_batchs = []
-                    # Generate up to 16 images for each sentence,
-                    # with randomness from noise z and conditioning augmentation.
-                    numSamples = np.minimum(16, cfg.TRAIN.NUM_COPY)
+                    numSamples = min(16, cfg.TRAIN.NUM_COPY)
                     for j in range(numSamples):
-                        hr_samples, samples = \
-                            sess.run([self.hr_fake_images, self.fake_images],
-                                     {self.embeddings: embeddings_batchs[i]})
                         samples_batchs.append(samples)
                         hr_samples_batchs.append(hr_samples)
                     self.save_super_images(images, samples_batchs,
