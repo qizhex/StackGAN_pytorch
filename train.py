@@ -9,8 +9,9 @@ from Modules.Datasets import TextDataset
 from Model.model import StackGAN, criterion
 from Modules.Utils import mkdir_p, save_super_images
 from Modules.Config import cfg, cfg_from_file
-import path
 import torch
+from torch import cuda
+
 
 class CondGANTrainer(object):
     def __init__(self,
@@ -149,6 +150,7 @@ if __name__ == "__main__":
         cfg_from_file(args.cfg_file + "stage1.yml")
     if args.gpu_id != -1:
         cfg.GPU_ID = args.gpu_id
+        cuda.set_device(cfg.GPU_ID)
     print('Using config:')
     pprint.pprint(cfg)
 
