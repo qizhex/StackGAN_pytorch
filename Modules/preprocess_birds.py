@@ -20,11 +20,11 @@ LR_HR_RETIO = 4
 IMSIZE = 256
 LOAD_SIZE = int(IMSIZE * 76 / 64)
 
-#suffix = "_small"
-suffix = ""
+#suffix = ""
+suffix = "_small"
 BIRD_DIR = '../../data/birds' + suffix
-#small_cnt = 100
-small_cnt = 1000000
+small_cnt = 100
+#small_cnt = 1000000
 toPIL = torchvision.transforms.ToPILImage()
 toTensor = torchvision.transforms.ToTensor()
 
@@ -35,6 +35,7 @@ def load_filenames(data_dir):
     if suffix == "_small":
         print("filenames", type(filenames), len(filenames))
         filenames = filenames[:small_cnt]
+        print len(filenames)
 
     print('Load filenames from: %s (%d)' % (filepath, len(filenames)))
     return filenames
@@ -81,7 +82,7 @@ def save_data_list(inpath, outpath, filenames, filename_bbox):
         if cnt % 100 == 0:
             print('Load %d......' % cnt)
     #
-    print('images', len(hr_images), hr_images[0].shape, lr_images[0].shape)
+    print('images', len(hr_images), hr_images[0].size(), lr_images[0].size())
     #
     outfile = outpath + str(LOAD_SIZE) + 'images.pt'
     with open(outfile, 'wb') as f_out:
