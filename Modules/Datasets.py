@@ -31,6 +31,10 @@ class Dataset(object):
         self.toPIL = torchvision.transforms.ToPILImage()
         self.toTensor = torchvision.transforms.ToTensor()
         self.resize_lr = torchvision.transforms.Scale(self._imsize // self.hr_lr_ratio)
+        self.random_crop = torchvision.transforms.Compose([
+            torchvision.transforms.RandomCrop(self._imsize),
+            torchvision.transforms.RandomHorizontalFlip(),
+        ])
 
     @property
     def images(self):
@@ -53,8 +57,9 @@ class Dataset(object):
         return self._epochs_completed
 
     def saveIDs(self):
-        self._saveIDs = np.arange(self._num_examples)
-        np.random.shuffle(self._saveIDs)
+        #self._saveIDs = np.arange(self._num_examples)
+        #np.random.shuffle(self._saveIDs)
+        self._saveIDs = torch.randperm(self._num_examples)
         return self._saveIDs
 
     def readCaptions(self, filenames, class_id):
@@ -76,17 +81,7 @@ class Dataset(object):
             lr_images = torch.zeros(images.shape[0], 3, self._imsize // self.hr_lr_ratio, self._imsize // self.hr_lr_ratio)
             ori_size = images.shape[1]
             for i in range(images.shape[0]):
-                h1 = int(np.floor((ori_size - self._imsize) * np.random.random()))
-                w1 = int(np.floor((ori_size - self._imsize) * np.random.random()))
-                cropped_image =\
-                    images[i][w1: w1 + self._imsize, h1: h1 + self._imsize, :]
-                if random.random() > 0.5:
-                    #transformed_images[i] = np.fliplr(cropped_image)
-                    current_image = np.fliplr(cropped_image)
-                else:
-                    current_image = cropped_image
-                    #transformed_images[i] = cropped_image
-                current_image = self.toPIL(current_image)
+                current_image = self.random_crop(current_image)
                 lr_image = self.toTensor(self.resize_lr(current_image)) * 2. - 1
                 current_image = self.toTensor(current_image) * 2. - 1
                 transformed_images[i] = current_image
@@ -100,16 +95,21 @@ class Dataset(object):
 
     def sample_embeddings(self, embeddings, filenames, class_id, sample_num):
         if len(embeddings.shape) == 2 or embeddings.shape[1] == 1:
+            assert False
             return np.squeeze(embeddings)
         else:
-            batch_size, embedding_num, _ = embeddings.shape
+            batch_size, embedding_num, embedding_size = embeddings.size()
+            batch_size = embeddings
             # Take every sample_num captions to compute the mean vector
-            sampled_embeddings = []
+            sampled_embeddings = torch.zeros(batch_size, embedding_size)
             sampled_captions = []
             for i in range(batch_size):
-                randix = np.random.choice(embedding_num,
-                                          sample_num, replace=False)
+                #randix = np.random.choice(embedding_num,
+                #                          sample_num, replace=False)
+                randix = torch.rand(batch_size) * embedding_num
+                randix = randix.long()
                 if sample_num == 1:
+                    assert False
                     randix = int(randix)
                     captions = self.readCaptions(filenames[i],
                                                  class_id[i])
@@ -118,9 +118,11 @@ class Dataset(object):
                 else:
                     e_sample = embeddings[i, randix, :]
                     e_mean = np.mean(e_sample, axis=0)
-                    sampled_embeddings.append(e_mean)
-            sampled_embeddings_array = np.array(sampled_embeddings)
-            return np.squeeze(sampled_embeddings_array), sampled_captions
+                    #sampled_embeddings.append(e_mean)
+                    sampled_embeddings[i] = e_mean
+            #sampled_embeddings_array = np.array(sampled_embeddings)
+            #return np.squeeze(sampled_embeddings_array), sampled_captions
+            return sampled_embeddings
 
     def next_batch(self, batch_size, window):
         """Return the next `batch_size` examples from this data set."""
@@ -141,12 +143,12 @@ class Dataset(object):
         end = self._index_in_epoch
 
         current_ids = self._perm[start:end]
-        fake_ids = np.random.randint(self._num_examples, size=batch_size)
-        collision_flag =\
-            (self._class_id[current_ids] == self._class_id[fake_ids])
+        #fake_ids = np.random.randint(self._num_examples, size=batch_size)
+        fake_ids = torch.rand((batch_size, )) * self._num_examples
+        fake_ids = fake_ids.long()
+        collision_flag = torch.eq(self._class_id[current_ids], self._class_id[fake_ids])
         fake_ids[collision_flag] =\
-            (fake_ids[collision_flag] +
-             np.random.randint(100, 200)) % self._num_examples
+            (fake_ids[collision_flag] + random.randrange(100, 200)) % self._num_examples
 
         sampled_images = self._images[current_ids]
         sampled_wrong_images = self._images[fake_ids, :, :, :]
@@ -165,7 +167,7 @@ class Dataset(object):
             sampled_embeddings, sampled_captions = \
                 self.sample_embeddings(self._embeddings[current_ids],
                                        filenames, class_id, window)
-            sampled_embeddings = wrap_Variable(torch.FloatTensor(sampled_embeddings.tolist()))
+            sampled_embeddings = wrap_Variable(sampled_embeddings)
             ret_list.append(sampled_embeddings)
             ret_list.append(sampled_captions)
         else:
@@ -218,9 +220,9 @@ class TextDataset(object):
         lr_imsize = 64
         self.hr_lr_ratio = hr_lr_ratio
         if self.hr_lr_ratio == 1:
-            self.image_filename = '/76images.pickle'
+            self.image_filename = '/76images.pt'
         elif self.hr_lr_ratio == 4:
-            self.image_filename = '/304images.pickle'
+            self.image_filename = '/304images.pt'
 
         self.image_shape = [lr_imsize * self.hr_lr_ratio,
                             lr_imsize * self.hr_lr_ratio, 3]
@@ -236,14 +238,17 @@ class TextDataset(object):
 
     def get_data(self, pickle_path, aug_flag=True):
         with open(pickle_path + self.image_filename, 'rb') as f:
-            images = pickle.load(f)
-            images = np.array(images)
+            images = torch.load(f)
+            #images = np.array(images)
 
         with open(pickle_path + self.embedding_filename, 'rb') as f:
             embeddings = pickle.load(f)
             embeddings = np.array(embeddings)
-            self.embedding_shape = [embeddings.shape[-1]]
-            print('embeddings: ', embeddings.shape)
+            embeddings = torch.FloatTensor(embeddings)
+            #self.embedding_shape = [embeddings.shape[-1]]
+            self.embedding_shape = embeddings.size()[-1]
+            #print('embeddings: ', embeddings.shape)
+            print('embeddings: ', embeddings.size())
         with open(pickle_path + '/filenames.pickle', 'rb') as f:
             list_filenames = pickle.load(f)
             print('list_filenames: ', len(list_filenames), list_filenames[0])
