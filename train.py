@@ -45,7 +45,7 @@ class CondGANTrainer(object):
         print('hr_image_shape', self.hr_image_shape)
         print('lr_image_shape', self.lr_image_shape)
 
-    def sample_super_image(self, stage):
+    def sample_super_image(self, stage, update):
         print "sampling image"
         num_caption = 1
         hr_images, lr_images, embeddings_batchs, savenames, captions_batchs = \
@@ -100,8 +100,8 @@ class CondGANTrainer(object):
                     update_count += 1
                     if update_count % cfg.TRAIN.SNAPSHOT_INTERVAL == 0:
                         print "stage: %d epoch: %d total update: %d, loss: %.5f, gen_loss: %.5f, disc_loss: %.5f" % (stage, epoch, update_count, total_loss.data[0], gen_loss.data[0], disc_loss.data[0])
-                        self.sample_super_image(stage)
-                        torch.save(model, "%s/%s.ckpt" % (self.checkpoint_dir, self.exp_name))
+                        self.sample_super_image(stage, update_count)
+                        torch.save(model, "%s/%s_update_%d.ckpt" % (self.checkpoint_dir, self.exp_name, i))
 
 
     def evaluate(self):

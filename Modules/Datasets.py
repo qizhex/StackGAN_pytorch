@@ -11,7 +11,11 @@ class Dataset(object):
                  filenames=None, workdir=None,
                  labels=None, aug_flag=True,
                  class_id=None, class_range=None, hr_lr_ratio=None):
-        self._images = images
+        #self._images = images
+        self._images = []
+        self.toPIL = torchvision.transforms.ToPILImage()
+        for i in images:
+            self._images += [self.toPIL(i)]
         self._embeddings = embeddings
         self._filenames = filenames
         self.workdir = workdir
@@ -28,7 +32,6 @@ class Dataset(object):
         self._class_range = class_range
         self._imsize = imsize
         self._perm = None
-        self.toPIL = torchvision.transforms.ToPILImage()
         self.toTensor = torchvision.transforms.ToTensor()
         self.resize_lr = torchvision.transforms.Scale(self._imsize // self.hr_lr_ratio)
         self.random_crop = torchvision.transforms.Compose([
@@ -77,10 +80,10 @@ class Dataset(object):
     def transform(self, images):
         if self._aug_flag:
             transformed_images =\
-                torch.zeros(images.shape[0], 3, self._imsize, self._imsize)
-            lr_images = torch.zeros(images.shape[0], 3, self._imsize // self.hr_lr_ratio, self._imsize // self.hr_lr_ratio)
-            ori_size = images.shape[1]
-            for i in range(images.shape[0]):
+                torch.zeros(len(images), 3, self._imsize, self._imsize)
+            lr_images = torch.zeros(len(images), 3, self._imsize // self.hr_lr_ratio, self._imsize // self.hr_lr_ratio)
+            for i in range(len(images)):
+                current_image = images[i]
                 current_image = self.random_crop(current_image)
                 lr_image = self.toTensor(self.resize_lr(current_image)) * 2. - 1
                 current_image = self.toTensor(current_image) * 2. - 1
@@ -93,20 +96,21 @@ class Dataset(object):
             assert False
             return wrap_Variable(torch.FloatTensor(images.tolist()))
 
-    def sample_embeddings(self, embeddings, filenames, class_id, sample_num):
-        if len(embeddings.shape) == 2 or embeddings.shape[1] == 1:
+    def sample_embeddings(self, embeddings, current_idx, filenames, class_id, sample_num):
+        if embeddings.dim == 2 or embeddings.dim == 1:
             assert False
             return np.squeeze(embeddings)
         else:
-            batch_size, embedding_num, embedding_size = embeddings.size()
-            batch_size = embeddings
+            batch_size = current_idx.shape[0]
+            embedding_num = embeddings.size()[1]
+            embedding_size = embeddings.size()[2]
             # Take every sample_num captions to compute the mean vector
             sampled_embeddings = torch.zeros(batch_size, embedding_size)
             sampled_captions = []
             for i in range(batch_size):
                 #randix = np.random.choice(embedding_num,
                 #                          sample_num, replace=False)
-                randix = torch.rand(batch_size) * embedding_num
+                randix = torch.rand(sample_num) * embedding_num
                 randix = randix.long()
                 if sample_num == 1:
                     assert False
@@ -114,15 +118,16 @@ class Dataset(object):
                     captions = self.readCaptions(filenames[i],
                                                  class_id[i])
                     sampled_captions.append(captions[randix])
-                    sampled_embeddings.append(embeddings[i, randix, :])
+                    sampled_embeddings.append(embeddings[current_idx[i], randix, :])
                 else:
-                    e_sample = embeddings[i, randix, :]
-                    e_mean = np.mean(e_sample, axis=0)
+                    e_sample = embeddings[current_idx[i]].index_select(0, randix)
+                    #e_mean = np.mean(e_sample, axis=0)
+                    e_mean = torch.mean(e_sample, 0)
                     #sampled_embeddings.append(e_mean)
                     sampled_embeddings[i] = e_mean
             #sampled_embeddings_array = np.array(sampled_embeddings)
             #return np.squeeze(sampled_embeddings_array), sampled_captions
-            return sampled_embeddings
+            return sampled_embeddings, sampled_captions
 
     def next_batch(self, batch_size, window):
         """Return the next `batch_size` examples from this data set."""
@@ -143,15 +148,19 @@ class Dataset(object):
         end = self._index_in_epoch
 
         current_ids = self._perm[start:end]
-        #fake_ids = np.random.randint(self._num_examples, size=batch_size)
-        fake_ids = torch.rand((batch_size, )) * self._num_examples
-        fake_ids = fake_ids.long()
-        collision_flag = torch.eq(self._class_id[current_ids], self._class_id[fake_ids])
+        fake_ids = np.random.randint(self._num_examples, size=batch_size)
+        #fake_ids = torch.rand((batch_size, )) * self._num_examples
+        #fake_ids = fake_ids.long()
+        collision_flag = (self._class_id[current_ids] == self._class_id[fake_ids])
         fake_ids[collision_flag] =\
             (fake_ids[collision_flag] + random.randrange(100, 200)) % self._num_examples
-
-        sampled_images = self._images[current_ids]
-        sampled_wrong_images = self._images[fake_ids, :, :, :]
+        sampled_images = []
+        for i in current_ids:
+            sampled_images += [self._images[i]]
+        sampled_wrong_images = []
+        for i in fake_ids:
+            sampled_wrong_images += [self._images[i]]
+        #sampled_wrong_images = self._images[fake_ids, :, :, :]
         #sampled_images = sampled_images.astype(np.float32)
         #sampled_wrong_images = sampled_wrong_images.astype(np.float32)
         #sampled_images = sampled_images * (2. / 255) - 1.
@@ -165,7 +174,7 @@ class Dataset(object):
             filenames = [self._filenames[i] for i in current_ids]
             class_id = [self._class_id[i] for i in current_ids]
             sampled_embeddings, sampled_captions = \
-                self.sample_embeddings(self._embeddings[current_ids],
+                self.sample_embeddings(self._embeddings, current_ids,
                                        filenames, class_id, window)
             sampled_embeddings = wrap_Variable(sampled_embeddings)
             ret_list.append(sampled_embeddings)
@@ -196,7 +205,7 @@ class Dataset(object):
         sampled_images, lr_images = self.transform(sampled_images)
 
         sampled_embeddings = self._embeddings[start:end]
-        _, embedding_num, _ = sampled_embeddings.shape
+        embedding_num = sampled_embeddings.size()[1]
         sampled_embeddings_batchs = []
 
         sampled_captions = []

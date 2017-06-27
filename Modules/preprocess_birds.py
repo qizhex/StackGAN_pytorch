@@ -20,11 +20,11 @@ LR_HR_RETIO = 4
 IMSIZE = 256
 LOAD_SIZE = int(IMSIZE * 76 / 64)
 
-#suffix = ""
-suffix = "_small"
+suffix = ""
+#suffix = "_small"
 BIRD_DIR = '../../data/birds' + suffix
-small_cnt = 100
-#small_cnt = 1000000
+#small_cnt = 100
+small_cnt = 1000000
 toPIL = torchvision.transforms.ToPILImage()
 toTensor = torchvision.transforms.ToTensor()
 
@@ -74,20 +74,22 @@ def save_data_list(inpath, outpath, filenames, filename_bbox):
         img = get_image(f_name, LOAD_SIZE, is_crop=True, bbox=bbox)
         img = img.astype('uint8')
         lr_img = scipy.misc.imresize(img, [lr_size, lr_size], 'bicubic')
-        img = toPIL(img)
+        #img = toTensor(toPIL(img.astype("float32") / 255.))
+        img = toTensor(toPIL(img))
         hr_images.append(img)
-        lr_img = toPIL(lr_img)
+        #lr_img = toTensor(toPIL(lr_img.astype("float32") / 255.))
+        lr_img = toTensor(toPIL(lr_img))
         lr_images.append(lr_img)
         cnt += 1
         if cnt % 100 == 0:
             print('Load %d......' % cnt)
     #
-    print('images', len(hr_images), hr_images[0].size(), lr_images[0].size())
+    #print('images', len(hr_images), hr_images[0].size(), lr_images[0].size())
     #
     outfile = outpath + str(LOAD_SIZE) + 'images.pt'
     with open(outfile, 'wb') as f_out:
         #pickle.dump(hr_images, f_out)
-        torch.save(hr_images, outfile)
+        torch.save(hr_images, f_out)
         print('save to: ', outfile)
     #
     outfile = outpath + str(lr_size) + 'images.pt'

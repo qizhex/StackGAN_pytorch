@@ -34,7 +34,7 @@ def save_super_images(images, sample_batchs, hr_sample_batchs,
     resize = torchvision.transforms.Compose(
         [torchvision.transforms.Lambda(lambda x: (x + 1) / 2), #* 255.
         torchvision.transforms.ToPILImage(),
-        torchvision.transforms.Scale((images[0].size(1), images[0].size(2))),
+        torchvision.transforms.Scale(images[0].size(1)),
         torchvision.transforms.ToTensor()
         ])
     sample_batchs = [[resize(li[i].data.cpu()) for i in range(li.size(0))] for li in sample_batchs]
