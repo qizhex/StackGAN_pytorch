@@ -8,6 +8,8 @@ import pickle
 from Utils import get_image
 import scipy.misc
 import pandas as pd
+import torch
+import torchvision
 
 # from glob import glob
 
@@ -18,9 +20,13 @@ LR_HR_RETIO = 4
 IMSIZE = 256
 LOAD_SIZE = int(IMSIZE * 76 / 64)
 
-suffix = "_small"
+#suffix = "_small"
+suffix = ""
 BIRD_DIR = '../../data/birds' + suffix
-small_cnt = 100
+#small_cnt = 100
+small_cnt = 1000000
+toPIL = torchvision.transforms.ToPILImage()
+toTensor = torchvision.transforms.ToTensor()
 
 def load_filenames(data_dir):
     filepath = data_dir + 'filenames.pickle'
@@ -66,8 +72,10 @@ def save_data_list(inpath, outpath, filenames, filename_bbox):
         f_name = '%s/CUB_200_2011/images/%s.jpg' % (inpath, key)
         img = get_image(f_name, LOAD_SIZE, is_crop=True, bbox=bbox)
         img = img.astype('uint8')
-        hr_images.append(img)
         lr_img = scipy.misc.imresize(img, [lr_size, lr_size], 'bicubic')
+        img = toPIL(img)
+        hr_images.append(img)
+        lr_img = toPIL(lr_img)
         lr_images.append(lr_img)
         cnt += 1
         if cnt % 100 == 0:
@@ -75,14 +83,16 @@ def save_data_list(inpath, outpath, filenames, filename_bbox):
     #
     print('images', len(hr_images), hr_images[0].shape, lr_images[0].shape)
     #
-    outfile = outpath + str(LOAD_SIZE) + 'images.pickle'
+    outfile = outpath + str(LOAD_SIZE) + 'images.pt'
     with open(outfile, 'wb') as f_out:
-        pickle.dump(hr_images, f_out)
+        #pickle.dump(hr_images, f_out)
+        torch.save(hr_images, outfile)
         print('save to: ', outfile)
     #
-    outfile = outpath + str(lr_size) + 'images.pickle'
+    outfile = outpath + str(lr_size) + 'images.pt'
     with open(outfile, 'wb') as f_out:
-        pickle.dump(lr_images, f_out)
+        #pickle.dump(lr_images, f_out)
+        torch.save(lr_images, outfile)
         print('save to: ', outfile)
 
 
