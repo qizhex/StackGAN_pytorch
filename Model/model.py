@@ -42,7 +42,8 @@ class StackGAN(nn.Module):
             assert False
 
     def forward(self, embeddings, hr_images, images, hr_wrong_images, wrong_images, stage):
-        z = torch.FloatTensor(self.batch_size, self.z_dim).normal_(0, 1)
+        batch_size = embeddings.size(0)
+        z = torch.FloatTensor(batch_size, self.z_dim).normal_(0, 1)
         z = Variable(z)
         if cfg.GPU_ID != -1:
             z = z.cuda()

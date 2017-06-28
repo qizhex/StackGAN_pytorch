@@ -8,50 +8,8 @@ import torchvision
 import time
 
 
-class SimpleLoader(torch.utils.data.Dataset):
-    def __init__(self, images, imsize, embeddings, hr_lr_ratio, class_id, sample_emb_num):
-        self._images = []
-        self.toPIL = torchvision.transforms.ToPILImage()
-        for i in images:
-            self._images += [self.toPIL(i)]
-        self.embeddings = embeddings
-        self.toTensor = torchvision.transforms.Compose([
-            torchvision.transforms.ToTensor(),
-            torchvision.transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-            ])
-        self._imsize = imsize
-        self.hr_lr_ratio = hr_lr_ratio
-        self.resize_lr = torchvision.transforms.Scale(self._imsize // self.hr_lr_ratio)
-        self.random_crop = torchvision.transforms.Compose([
-            torchvision.transforms.RandomCrop(self._imsize),
-            torchvision.transforms.RandomHorizontalFlip(),
-        ])
-        self._class_id = class_id
-        self.sample_emb_num = sample_emb_num
-        self.size = len(self._images)
-        self.embedding_num = embeddings.size(1)
-
-    def __getitem__(self, index):
-        hr_img, lr_img = self.transform(self._images[index])
-        wrong_index = int(random.random() * self.size)
-        while self._class_id[wrong_index] != self._class_id[index]:
-            wrong_index = int(random.random() * self.size)
-        wrong_hr_img, wrong_lr_img = self.transform(self._images[wrong_index])
-        randix = torch.rand(self.sample_emb_num) * self.embedding_num
-        randix = randix.long()
-        e_sample = self.embeddings[index].index_select(0, randix)
-        e_mean = torch.mean(e_sample, 0).squeeze()
-        return hr_img, lr_img, wrong_hr_img, wrong_lr_img, e_mean
-
-    def __len__(self):
-        return self.size
-
-    def transform(self, img):
-        current_image = img
-        current_image = self.random_crop(current_image)
-        lr_image = self.toTensor(self.resize_lr(current_image))
-        current_image = self.toTensor(current_image)
-        return current_image, lr_image
+import torch.utils.data.DataLoader
+import torchvision.datasets.ImageFolder
 
 class Dataset(object):
     def __init__(self, images, imsize, embeddings=None,
@@ -289,8 +247,7 @@ class TextDataset(object):
         elif embedding_type == 'skip-thought':
             self.embedding_filename = '/skip-thought-embeddings.pickle'
 
-    def get_information(self, pickle_path):
-
+    def get_data(self, pickle_path, aug_flag=True):
         with open(pickle_path + self.image_filename, 'rb') as f:
             images = torch.load(f)
             #images = np.array(images)
@@ -308,15 +265,6 @@ class TextDataset(object):
             print('list_filenames: ', len(list_filenames), list_filenames[0])
         with open(pickle_path + '/class_info.pickle', 'rb') as f:
             class_id = pickle.load(f)
-        return images, embeddings, list_filenames, class_id
-
-    def get_data(self, pickle_path, aug_flag=True):
-        images, embeddings, list_filenames, class_id = self.get_information(pickle_path)
         return Dataset(images, self.image_shape[0], embeddings,
                    list_filenames, self.workdir, None,
                    aug_flag, class_id, None, self.hr_lr_ratio)
-
-    def get_multi_process_data(self, pickle_path, sample_emb_num, batch_size):
-        images, embeddings, list_filenames, class_id = self.get_information(pickle_path)
-        simple_loader = SimpleLoader(images, self.image_shape[0], embeddings, self.hr_lr_ratio, class_id, sample_emb_num)
-        return torch.utils.data.DataLoader(simple_loader, batch_size=batch_size, shuffle=True, num_workers=5, pin_memory=True)

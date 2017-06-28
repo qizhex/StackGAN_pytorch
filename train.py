@@ -7,11 +7,11 @@ import pprint
 from Modules.Optim import Optim
 from Modules.Datasets import TextDataset
 from Model.model import StackGAN, criterion
-from Modules.Utils import mkdir_p, save_super_images
+from Modules.Utils import mkdir_p, save_super_images, wrap_Variable
 from Modules.Config import cfg, cfg_from_file
 import torch
 from torch import cuda
-
+import time
 
 class CondGANTrainer(object):
     def __init__(self,
@@ -49,7 +49,7 @@ class CondGANTrainer(object):
         print "sampling image"
         num_caption = 1
         hr_images, lr_images, embeddings_batchs, savenames, captions_batchs = \
-            self.dataset.train.next_batch_test(self.batch_size, 0, num_caption)
+            self.dataset.test.next_batch_test(self.batch_size, 0, num_caption)
         numSamples = min(16, cfg.TRAIN.NUM_COPY)
         samples_batchs = []
         hr_samples_batchs = []
@@ -81,17 +81,17 @@ class CondGANTrainer(object):
                 start_decay_at=0,
                 lr_decay_freq =lr_decay_step,
             )
-            number_example = self.dataset.train._num_examples
-            updates_per_epoch = int(number_example / self.batch_size)
             for epoch in range(cfg.TRAIN.MAX_EPOCH):
-                for i in range(updates_per_epoch):
+                for hr_images, lr_images, hr_wrong_images, lr_wrong_images, embeddings in self.dataset.train:
+                    hr_images = wrap_Variable(hr_images)
+                    lr_images = wrap_Variable(lr_images)
+                    hr_wrong_images = wrap_Variable(hr_wrong_images)
+                    lr_wrong_images = wrap_Variable(lr_wrong_images)
+                    embeddings = wrap_Variable(embeddings)
                     model.zero_grad()
-                    hr_images, lr_images, hr_wrong_images, lr_wrong_images, embeddings, _, _ = \
-                        self.dataset.train.next_batch(self.batch_size, cfg.TRAIN.NUM_EMBEDDING)
                     fake_d_out, real_d_out, wrong_d_out, kl_loss, fake_images, hr_fake_images = \
                         self.model(embeddings, hr_images, lr_images, hr_wrong_images, lr_wrong_images, stage)
                     disc_loss, gen_loss = self.criterion.evaluate_cost(fake_d_out, real_d_out, wrong_d_out)
-                    #print gen_loss.size(), kl_loss.size()
                     gen_loss += kl_loss.sum()
                     total_loss = disc_loss + gen_loss
                     batch_size = hr_images.size(0)
@@ -101,7 +101,7 @@ class CondGANTrainer(object):
                     if update_count % cfg.TRAIN.SNAPSHOT_INTERVAL == 0:
                         print "stage: %d epoch: %d total update: %d, loss: %.5f, gen_loss: %.5f, disc_loss: %.5f" % (stage, epoch, update_count, total_loss.data[0], gen_loss.data[0], disc_loss.data[0])
                         self.sample_super_image(stage, update_count)
-                        torch.save(model, "%s/%s_update_%d.ckpt" % (self.checkpoint_dir, self.exp_name, i))
+                        torch.save(model, "%s/%s_update_%d.ckpt" % (self.checkpoint_dir, self.exp_name, update_count))
 
 
     def evaluate(self):
@@ -163,7 +163,7 @@ if __name__ == "__main__":
     dataset.test = dataset.get_data(filename_test)
     if cfg.TRAIN.FLAG:
         filename_train = '%s/train' % (datadir)
-        dataset.train = dataset.get_data(filename_train)
+        dataset.train = dataset.get_multi_process_data(filename_train, cfg.TRAIN.NUM_EMBEDDING, cfg.TRAIN.BATCH_SIZE)
         log_dir = "../ckt_logs/%s/%s_%s" % \
                   (cfg.DATASET_NAME, cfg.CONFIG_NAME, timestamp)
         mkdir_p(log_dir)
