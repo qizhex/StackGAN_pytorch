@@ -3,11 +3,13 @@ from Modules.Config import cfg
 from torch import nn
 import math
 from layers import custom_con2d
+from torch.autograd import Variable
 
 
 class lr_generator(nn.Module):
-    def __init__(self, imsize, z_size, c_size):
+    def __init__(self, imsize, z_size, c_size, c_var_dim):
         super(lr_generator, self).__init__()
+        self.lr_context_encoder = context_encoder_g(c_var_dim)
         self.s = imsize
         self.s2, self.s4, self.s8, self.s16 = \
             int(self.s / 2), int(self.s / 4), int(self.s / 8), int(self.s / 16)
@@ -56,14 +58,22 @@ class lr_generator(nn.Module):
             nn.Tanh(),
         )
         self.activ = nn.ReLU()
+        self.z_dim = z_size
 
-    def forward(self, z):
+    def forward(self, batch_size, embeddings):
+        z = torch.FloatTensor(batch_size, self.z_dim).normal_(0, 1)
+        z = Variable(z)
+        if cfg.GPU_ID != -1:
+            z = z.cuda()
+        c, kl_loss = self.lr_context_encoder(embeddings)
+        kl_loss = kl_loss * cfg.TRAIN.COEFF.KL
+        z = torch.cat([z, c], 1)
         out1_0 = self.node1_0(z).view(-1, self.gf_dim * 8, self.s16, self.s16)
         out1 = self.activ(out1_0 + self.node1_1(out1_0))
         out2_0 = self.node2_0(out1)
         out2 = self.activ(out2_0 + self.node2_1(out2_0))
         out = self.node3(out2)
-        return out
+        return out, kl_loss
 
 class residual_block(nn.Module):
     def __init__(self, imsize):
@@ -85,8 +95,9 @@ class residual_block(nn.Module):
         return self.activ(self.node(x_c_code) + x_c_code)
 
 class hr_generator(nn.Module):
-    def __init__(self, imsize):
+    def __init__(self, imsize, c_var_dim):
         super(hr_generator, self).__init__()
+        self.hr_context_encoder = context_encoder_g(c_var_dim)
         self.s = imsize
         self.s2, self.s4, self.s8, self.s16 = \
             int(self.s / 2), int(self.s / 4), int(self.s / 8), int(self.s / 16)
@@ -132,16 +143,17 @@ class hr_generator(nn.Module):
             nn.Tanh(),
         )
 
-    # TODO  c directly input
-    def forward(self, x, c):
+    def forward(self, x, embeddings):
         x_rep = self.encode_image(x)
+        c, kl_loss = self.hr_context_encoder(embeddings)
+        kl_loss *= cfg.TRAIN.COEFF.KL
         c_rep = c.view(c.size(0), c.size(1), 1, 1)
         c_rep = c_rep.expand(c_rep.size(0), c_rep.size(1), self.s4, self.s4)
         x_c_rep = torch.cat([x_rep, c_rep], 1)
         out = self.node0(x_c_rep)
         out = self.node1(out)
         out = self.node2(out)
-        return out
+        return out, kl_loss
 
 class context_encoder_g(nn.Module):
     def __init__(self, c_var_dim):
