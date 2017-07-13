@@ -81,6 +81,7 @@ class criterion():
         self.criterion_node = StableBCELoss()
         if cfg.GPU_ID != -1:
             self.criterion_node = self.criterion_node.cuda()
+        self.sigmoid = nn.Sigmoid()
 
     def evaluate_cost(self, fake_d_out, real_d_out, wrong_d_out):
         ones = Variable(torch.ones(fake_d_out.size(0)))
@@ -91,6 +92,10 @@ class criterion():
         real_d_loss = self.criterion_node(real_d_out, ones)
         wrong_d_loss = self.criterion_node(wrong_d_out, zeros)
         fake_d_loss = self.criterion_node(fake_d_out, zeros)
+        real_output = self.sigmoid(real_d_out)
+        fake_output = self.sigmoid(fake_d_out)
+        wrong_output = self.sigmoid(wrong_d_out)
+        print "real prob", real_output.data.mean()[0], "fake prob", fake_output.data.mean()[0], "wrong prob", wrong_output.data.mean()[0]
         if cfg.TRAIN.B_WRONG:
             discriminator_loss = real_d_loss + (wrong_d_loss + fake_d_loss) / 2.
         else:
