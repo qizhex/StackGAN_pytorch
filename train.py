@@ -55,8 +55,7 @@ class CondGANTrainer(object):
         hr_samples_batchs = []
         for i in range(num_caption):
             for j in range(numSamples):
-                fake_d_out, real_d_out, wrong_d_out, kl_loss, samples, hr_samples = \
-                    self.model(embeddings_batchs[i], hr_images, lr_images, hr_images, lr_images, stage)
+                samples, hr_samples = self.model(embeddings_batchs[i], stage)
                 hr_samples_batchs.append(hr_samples)
                 samples_batchs.append(samples)
             save_super_images(hr_images, samples_batchs,
@@ -75,8 +74,14 @@ class CondGANTrainer(object):
             print "stage", stage
             cfg_from_file(args.cfg_file + "stage%d.yml" % stage)
             lr_decay_step = cfg.TRAIN.LR_DECAY_EPOCH
-            stage_optim = Optim(
-                model.get_stage_parameters(stage), "adam", cfg.TRAIN.DISCRIMINATOR_LR, 10000000,
+            stage_d_optim = Optim(
+                model.get_stage_d_parameters(stage), "adam", cfg.TRAIN.DISCRIMINATOR_LR, 10000000,
+                lr_decay=0.5,
+                start_decay_at=0,
+                lr_decay_freq =lr_decay_step,
+            )
+            stage_g_optim = Optim(
+                model.get_stage_g_parameters(stage), "adam", cfg.TRAIN.DISCRIMINATOR_LR, 10000000,
                 lr_decay=0.5,
                 start_decay_at=0,
                 lr_decay_freq =lr_decay_step,
@@ -88,18 +93,41 @@ class CondGANTrainer(object):
                     hr_wrong_images = wrap_Variable(hr_wrong_images)
                     lr_wrong_images = wrap_Variable(lr_wrong_images)
                     embeddings = wrap_Variable(embeddings)
-                    model.zero_grad()
-                    fake_d_out, real_d_out, wrong_d_out, kl_loss, fake_images, hr_fake_images = \
-                        self.model(embeddings, hr_images, lr_images, hr_wrong_images, lr_wrong_images, stage)
-                    disc_loss, gen_loss = self.criterion.evaluate_cost(fake_d_out, real_d_out, wrong_d_out)
+                    batch_size = embeddings.size(0)
+                    fake_images, kl_loss = self.model.lr_generator(batch_size, embeddings)
+                    if stage == 1:
+                        self.model.lr_disc.zero_grad()
+                        fake_d_out = self.model.lr_disc(fake_images.detach(), embeddings)
+                        real_d_out = self.model.lr_disc(lr_images, embeddings)
+                        wrong_d_out = self.model.lr_disc(lr_wrong_images, embeddings)
+                        hr_fake_images = None
+                    elif stage == 2:
+                        self.model.hr_disc.zero_grad()
+                        hr_fake_images, kl_loss = self.model.hr_generator(fake_images, embeddings)
+                        fake_d_out = self.model.hr_disc(hr_fake_images, embeddings)
+                        real_d_out = self.model.hr_disc(hr_images, embeddings)
+                        wrong_d_out = self.model.hr_disc(hr_wrong_images, embeddings)
+                    else:
+                        assert False
+                    disc_loss, p_real, p_fake, p_wrong = self.criterion.evaluate_d_cost(fake_d_out, real_d_out, wrong_d_out)
+                    disc_loss.div(batch_size).backward()
+                    stage_d_optim.step()
+                    if stage == 1:
+                        self.model.lr_generator.zero_grad()
+                        fake_d_out = self.model.lr_disc(fake_images, embeddings)
+                    else:
+                        self.model.hr_generator.zero_grad()
+                        fake_d_out = self.model.hr_disc(hr_fake_images, embeddings)
+
+                    gen_loss, p_fake_new = self.criterion.evaluate_cost(fake_d_out)
                     gen_loss += kl_loss.sum()
-                    total_loss = disc_loss + gen_loss
                     batch_size = hr_images.size(0)
-                    total_loss.div(batch_size).backward()
-                    stage_optim.step()
+                    gen_loss.div(batch_size).backward()
+                    stage_g_optim.step()
                     update_count += 1
+
                     if update_count % cfg.TRAIN.SNAPSHOT_INTERVAL == 0:
-                        print "stage: %d epoch: %d total update: %d, loss: %.5f, gen_loss: %.5f, disc_loss: %.5f" % (stage, epoch, update_count, total_loss.data[0], gen_loss.data[0], disc_loss.data[0])
+                        print "stage: %d epoch: %d total update: %d, gen_loss: %.5f, disc_loss: %.5f, real prob: %.5f, fake prob: %.5f, new fake prob(smaller): %.5f, wrong prob: %.5f" % (stage, epoch, update_count, gen_loss.data[0], disc_loss.data[0], p_real, p_fake, p_fake_new, p_wrong)
                         self.sample_super_image(stage, update_count)
                         torch.save(model, "%s/%s_update_%d.ckpt" % (self.checkpoint_dir, self.exp_name, update_count))
 

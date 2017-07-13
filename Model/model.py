@@ -5,6 +5,7 @@ import math
 from discriminator import discriminator
 from generator import lr_generator, hr_generator, context_encoder_g
 from torch.autograd import Variable
+from Modules.Utils import wrap_Variable
 
 class StackGAN(nn.Module):
     def __init__(self, lr_imsize, hr_lr_ratio):
@@ -24,48 +25,40 @@ class StackGAN(nn.Module):
         c_var_dim = 1024
         self.lr_disc = discriminator(False, lr_imsize, c_var_dim)
         self.hr_disc = discriminator(True, lr_imsize, c_var_dim)
-        self.lr_generator = lr_generator(lr_imsize, self.z_dim, self.ef_dim)
-        self.hr_generator = hr_generator(lr_imsize)
-        self.lr_context_encoder = context_encoder_g(c_var_dim)
-        self.hr_context_encoder = context_encoder_g(c_var_dim)
+        self.lr_generator = lr_generator(lr_imsize, self.z_dim, self.ef_dim, c_var_dim)
+        self.hr_generator = hr_generator(lr_imsize, c_var_dim)
 
-    def get_stage_parameters(self, stage):
+    def get_stage_d_parameters(self, stage):
         if stage == 1:
-            for i in [self.lr_disc, self.lr_generator, self.lr_context_encoder]:
-                for p in i.parameters():
-                    yield p
+            for p in self.lr_disc.parameters():
+                yield p
         elif stage == 2:
-            for i in [self.hr_disc, self.hr_generator, self.hr_context_encoder]:
-                for p in i.parameters():
-                    yield p
+            for p in self.hr_disc.parameters():
+                yield p
         else:
             assert False
 
-    def forward(self, embeddings, hr_images, images, hr_wrong_images, wrong_images, stage):
+    def get_stage_g_parameters(self, stage):
+        if stage == 1:
+            for p in self.lr_generator.parameters():
+                yield p
+        elif stage == 2:
+            for p in self.hr_generator.parameters():
+                yield p
+        else:
+            assert False
+
+    def forward(self, embeddings, stage):
         batch_size = embeddings.size(0)
-        z = torch.FloatTensor(batch_size, self.z_dim).normal_(0, 1)
-        z = Variable(z)
-        if cfg.GPU_ID != -1:
-            z = z.cuda()
-        c, kl_loss = self.lr_context_encoder(embeddings)
-        kl_loss = kl_loss * cfg.TRAIN.COEFF.KL
-        fake_images = self.lr_generator(torch.cat([z, c], 1))
-        if stage == 1:
-            fake_d_out = self.lr_disc(fake_images, embeddings)
-            real_d_out = self.lr_disc(images, embeddings)
-            wrong_d_out = self.lr_disc(wrong_images, embeddings)
-            hr_fake_images = None
-        elif stage == 2:
-            hr_c, hr_kl_loss = self.hr_context_encoder(embeddings)
-            hr_kl_loss *= cfg.TRAIN.COEFF.KL
-            hr_fake_images = self.hr_generator(fake_images, hr_c)
-            fake_d_out = self.hr_disc(hr_fake_images, embeddings)
-            real_d_out = self.hr_disc(hr_images, embeddings)
-            wrong_d_out = self.hr_disc(hr_wrong_images, embeddings)
-            kl_loss = hr_kl_loss
+        fake_images, _ = self.lr_generator(batch_size, embeddings)
+        if stage == 2:
+            hr_fake_images, _ = self.hr_generator(fake_images, embeddings)
         else:
-            assert False
-        return fake_d_out, real_d_out, wrong_d_out, kl_loss, fake_images, hr_fake_images
+            hr_fake_images = None
+        return fake_images, hr_fake_images
+
+    #def forward_backward(self, embeddings, hr_images, images, hr_wrong_images, wrong_images, stage, criterion):
+
 
 class StableBCELoss(nn.modules.Module):
     def __init__(self):
@@ -83,7 +76,7 @@ class criterion():
             self.criterion_node = self.criterion_node.cuda()
         self.sigmoid = nn.Sigmoid()
 
-    def evaluate_cost(self, fake_d_out, real_d_out, wrong_d_out):
+    def evaluate_d_cost(self, fake_d_out, real_d_out, wrong_d_out):
         ones = Variable(torch.ones(fake_d_out.size(0)))
         zeros = Variable(torch.zeros(fake_d_out.size(0)))
         if cfg.GPU_ID != -1:
@@ -95,10 +88,16 @@ class criterion():
         real_output = self.sigmoid(real_d_out)
         fake_output = self.sigmoid(fake_d_out)
         wrong_output = self.sigmoid(wrong_d_out)
-        print "real prob", real_output.data.mean()[0], "fake prob", fake_output.data.mean()[0], "wrong prob", wrong_output.data.mean()[0]
         if cfg.TRAIN.B_WRONG:
             discriminator_loss = real_d_loss + (wrong_d_loss + fake_d_loss) / 2.
         else:
             discriminator_loss = real_d_loss + fake_d_loss
+        return discriminator_loss, real_output.data.mean(), fake_output.data.mean(), wrong_output.data.mean()
+
+    def evaluate_cost(self, fake_d_out):
+        ones = Variable(torch.ones(fake_d_out.size(0)))
+        if cfg.GPU_ID != -1:
+            ones = ones.cuda()
         generator_loss = self.criterion_node(fake_d_out, ones)
-        return discriminator_loss, generator_loss
+        fake_output = self.sigmoid(fake_d_out)
+        return generator_loss, fake_output.data.mean()
