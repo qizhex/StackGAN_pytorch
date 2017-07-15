@@ -12,6 +12,7 @@ from Modules.Config import cfg, cfg_from_file
 import torch
 from torch import cuda
 import time
+import numpy as np
 
 class CondGANTrainer(object):
     def __init__(self,
@@ -68,7 +69,14 @@ class CondGANTrainer(object):
             print("Reading model parameters from %s" % self.model_path)
         model = self.model
         for p in model.parameters():
-            p.data.normal_(0, 0.02)
+            size = p.data.size()
+            u1 = torch.rand(size) * (1 - np.exp(-2)) + np.exp(-2)
+            # sample u2:
+            u2 = torch.rand(size)
+            # sample the truncated gaussian ~TN(0,1,[-2,2]):
+            z = torch.sqrt(-2*torch.log(u1)) * torch.cos(2*np.pi*u2)
+            p.data.copy_(z * 0.02)
+            #p.data.normal_(0, 0.02)
         update_count = 0
         for stage in [1, 2]:
             print "stage", stage
@@ -104,7 +112,7 @@ class CondGANTrainer(object):
                     elif stage == 2:
                         self.model.hr_disc.zero_grad()
                         hr_fake_images, kl_loss = self.model.hr_generator(fake_images, embeddings)
-                        fake_d_out = self.model.hr_disc(hr_fake_images, embeddings)
+                        fake_d_out = self.model.hr_disc(hr_fake_images.detach(), embeddings)
                         real_d_out = self.model.hr_disc(hr_images, embeddings)
                         wrong_d_out = self.model.hr_disc(hr_wrong_images, embeddings)
                     else:
@@ -119,9 +127,9 @@ class CondGANTrainer(object):
                         self.model.hr_generator.zero_grad()
                         fake_d_out = self.model.hr_disc(hr_fake_images, embeddings)
 
-                    gen_loss, p_fake_new = self.criterion.evaluate_cost(fake_d_out)
+                    gen_loss, p_fake_new = self.criterion.evaluate_g_cost(fake_d_out)
+                    gen_loss = gen_loss * 2
                     gen_loss += kl_loss.sum()
-                    batch_size = hr_images.size(0)
                     gen_loss.div(batch_size).backward()
                     stage_g_optim.step()
                     update_count += 1

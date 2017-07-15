@@ -14,7 +14,7 @@ class Optim(object):
         elif self.method == 'adadelta':
             self.optimizer = optim.Adadelta(self.params, lr=self.lr)
         elif self.method == 'adam':
-            self.optimizer = optim.Adam(self.params, lr=self.lr)
+            self.optimizer = optim.Adam(self.params, lr=self.lr, betas=(0.5, 0.999))
         else:
             raise RuntimeError("Invalid optim method: " + self.method)
 

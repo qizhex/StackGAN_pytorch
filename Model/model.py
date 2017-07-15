@@ -94,7 +94,7 @@ class criterion():
             discriminator_loss = real_d_loss + fake_d_loss
         return discriminator_loss, real_output.data.mean(), fake_output.data.mean(), wrong_output.data.mean()
 
-    def evaluate_cost(self, fake_d_out):
+    def evaluate_g_cost(self, fake_d_out):
         ones = Variable(torch.ones(fake_d_out.size(0)))
         if cfg.GPU_ID != -1:
             ones = ones.cuda()
