@@ -68,7 +68,7 @@ class CondGANTrainer(object):
         if len(self.model_path) > 0:
             print("Reading model parameters from %s" % self.model_path)
         model = self.model
-        for p in model.parameters():
+        '''for p in model.parameters():
             size = p.data.size()
             u1 = torch.rand(size) * (1 - np.exp(-2)) + np.exp(-2)
             # sample u2:
@@ -76,7 +76,7 @@ class CondGANTrainer(object):
             # sample the truncated gaussian ~TN(0,1,[-2,2]):
             z = torch.sqrt(-2*torch.log(u1)) * torch.cos(2*np.pi*u2)
             p.data.copy_(z * 0.02)
-            #p.data.normal_(0, 0.02)
+            #p.data.normal_(0, 0.02)'''
         update_count = 0
         for stage in [1, 2]:
             print "stage", stage
@@ -96,6 +96,7 @@ class CondGANTrainer(object):
             )
             for epoch in range(cfg.TRAIN.MAX_EPOCH):
                 for hr_images, lr_images, hr_wrong_images, lr_wrong_images, embeddings in self.dataset.train:
+                    #print lr_images.size()
                     hr_images = wrap_Variable(hr_images)
                     lr_images = wrap_Variable(lr_images)
                     hr_wrong_images = wrap_Variable(hr_wrong_images)
@@ -103,6 +104,7 @@ class CondGANTrainer(object):
                     embeddings = wrap_Variable(embeddings)
                     batch_size = embeddings.size(0)
                     fake_images, kl_loss = self.model.lr_generator(batch_size, embeddings)
+                    #print fake_images
                     if stage == 1:
                         self.model.lr_disc.zero_grad()
                         fake_d_out = self.model.lr_disc(fake_images.detach(), embeddings)

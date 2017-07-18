@@ -7,7 +7,7 @@ Z_DIM: 100
 TRAIN:
     FLAG: True
     PRETRAINED_MODEL: './ckt_logs/birds/stageI/model_82000.ckpt'
-    BATCH_SIZE: 64
+    BATCH_SIZE: 1
     NUM_COPY: 4
     MAX_EPOCH: 600
     SNAPSHOT_INTERVAL: 2000
