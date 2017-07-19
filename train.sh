@@ -1,1 +1,1 @@
-python train.py --cfg Config/default/ --gpu 0
+python train.py --cfg Config/default/ --gpu 0 --stage 1

@@ -20,11 +20,13 @@ class CondGANTrainer(object):
                  dataset=None,
                  exp_name="model",
                  ckt_logs_dir="ckt_logs",
+                 stage=None,
                  ):
         """
         :type model: RegularizedGAN
         """
         self.model = model
+        self.stage = stage
         self.dataset = dataset
         self.exp_name = exp_name
         self.log_dir = ckt_logs_dir
@@ -67,6 +69,8 @@ class CondGANTrainer(object):
     def train(self):
         if len(self.model_path) > 0:
             print("Reading model parameters from %s" % self.model_path)
+            #assert False
+            self.model = torch.load(self.model_path)
         model = self.model
         '''for p in model.parameters():
             size = p.data.size()
@@ -78,7 +82,7 @@ class CondGANTrainer(object):
             p.data.copy_(z * 0.02)
             #p.data.normal_(0, 0.02)'''
         update_count = 0
-        for stage in [1, 2]:
+        for stage in [self.stage]:#[1, 2]:
             print "stage", stage
             cfg_from_file(args.cfg_file + "stage%d.yml" % stage)
             lr_decay_step = cfg.TRAIN.LR_DECAY_EPOCH
@@ -139,7 +143,7 @@ class CondGANTrainer(object):
                     if update_count % cfg.TRAIN.SNAPSHOT_INTERVAL == 0:
                         print "stage: %d epoch: %d total update: %d, gen_loss: %.5f, disc_loss: %.5f, real prob: %.5f, fake prob: %.5f, new fake prob(smaller): %.5f, wrong prob: %.5f" % (stage, epoch, update_count, gen_loss.data[0], disc_loss.data[0], p_real, p_fake, p_fake_new, p_wrong)
                         self.sample_super_image(stage, update_count)
-                        torch.save(model, "%s/%s_update_%d.ckpt" % (self.checkpoint_dir, self.exp_name, update_count))
+                        torch.save(model, "%s/%s.ckpt" % (self.checkpoint_dir, self.exp_name))
 
 
     def evaluate(self):
@@ -179,13 +183,14 @@ if __name__ == "__main__":
     parser.add_argument('--gpu', dest='gpu_id',
                         help='GPU device id to use [0]',
                         default=-1, type=int)
+    parser.add_argument('--stage', type=int, default=1)
     # if len(sys.argv) == 1:
     #    parser.print_help()
     #    sys.exit(1)
     args = parser.parse_args()
 
     if args.cfg_file is not None:
-        cfg_from_file(args.cfg_file + "stage1.yml")
+        cfg_from_file(args.cfg_file + "stage%d.yml" % args.stage)
     if args.gpu_id != -1:
         cfg.GPU_ID = args.gpu_id
         cuda.set_device(cfg.GPU_ID)
@@ -218,7 +223,8 @@ if __name__ == "__main__":
     algo = CondGANTrainer(
         model=model,
         dataset=dataset,
-        ckt_logs_dir=log_dir
+        ckt_logs_dir=log_dir,
+        stage=args.stage,
     )
 
     if cfg.TRAIN.FLAG:
