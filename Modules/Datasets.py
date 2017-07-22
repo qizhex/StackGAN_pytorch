@@ -7,7 +7,6 @@ from Utils import wrap_Variable
 import torchvision
 import time
 
-
 class SimpleLoader(torch.utils.data.Dataset):
     def __init__(self, images, imsize, embeddings, hr_lr_ratio, class_id, sample_emb_num):
         self._images = []

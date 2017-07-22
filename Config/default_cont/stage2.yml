@@ -6,10 +6,10 @@ Z_DIM: 100
 
 TRAIN:
     FLAG: True
-    PRETRAINED_MODEL: '../ckt_logs/birds/stageI_2017_07_17_22_58_30/model_update_82000.ckpt'
+    PRETRAINED_MODEL: '../ckt_logs/birds/stageII_2017_07_20_10_58_24/model.ckpt'
     BATCH_SIZE: 16
     NUM_COPY: 4
-    MAX_EPOCH: 150
+    MAX_EPOCH: 200
     SNAPSHOT_INTERVAL: 2000
     DISCRIMINATOR_LR: 0.0002
     GENERATOR_LR: 0.0002

@@ -5,7 +5,6 @@ import math
 from layers import custom_con2d
 from torch.autograd import Variable
 
-
 class lr_generator(nn.Module):
     def __init__(self, imsize, z_size, c_size, c_var_dim):
         super(lr_generator, self).__init__()

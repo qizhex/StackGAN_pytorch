@@ -63,7 +63,7 @@ def save_super_images(images, sample_batchs, hr_sample_batchs,
             lr_images_to_show.append(lr_img)
             hr_images_to_show.append(hr_img)
         captions = captions_batchs[j][sentenceID]
-        fullpath = '%s_sentence%d.jpg' % (s_tmp, sentenceID)
+        fullpath = '%s_sentence%d_%s.jpg' % (s_tmp, sentenceID, captions)
         two_row_image = hr_images_to_show + lr_images_to_show
         two_row_image_tensor = torch.zeros(len(two_row_image), *two_row_image[0].size())
         for i in range(len(two_row_image)):

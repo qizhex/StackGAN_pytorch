@@ -149,14 +149,15 @@ class CondGANTrainer(object):
     def evaluate(self):
         if self.model_path.find('ckpt') != -1:
             print("Reading model parameters from %s" % self.model_path)
+            self.model = torch.load(self.model_path)
             test_data = self.dataset.test
             print('num_examples:', test_data._num_examples)
             count = 0
+            num_caption = 2
             while count < test_data._num_examples:
                 start = count % test_data._num_examples
-                images, embeddings_batchs, savenames, captions_batchs = \
-                    test_data.next_batch_test(self.batch_size, start, 1)
-
+                hr_images, lr_images, embeddings_batchs, savenames, captions_batchs = \
+                    self.dataset.test.next_batch_test(self.batch_size, count, num_caption)
                 print('count = ', count, 'start = ', start)
                 # the i-th sentence/caption
                 for i in range(len(embeddings_batchs)):
@@ -164,13 +165,13 @@ class CondGANTrainer(object):
                     hr_samples_batchs = []
                     numSamples = min(16, cfg.TRAIN.NUM_COPY)
                     for j in range(numSamples):
-                        samples_batchs.append(samples)
+                        samples, hr_samples = self.model(embeddings_batchs[i], 2)
                         hr_samples_batchs.append(hr_samples)
-                    self.save_super_images(images, samples_batchs,
-                                           hr_samples_batchs,
-                                           savenames, captions_batchs,
-                                           i, save_dir, subset)
-
+                        samples_batchs.append(samples)
+                    save_super_images(hr_images, samples_batchs,
+                                      hr_samples_batchs,
+                                      savenames, captions_batchs,
+                                      i, self.log_dir, "test")
                 count += self.batch_size
         else:
             print("Input a valid model path.")
