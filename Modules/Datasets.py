@@ -108,7 +108,8 @@ class Dataset(object):
     def saveIDs(self):
         #self._saveIDs = np.arange(self._num_examples)
         #np.random.shuffle(self._saveIDs)
-        self._saveIDs = torch.randperm(self._num_examples)
+        #self._saveIDs = torch.randperm(self._num_examples)
+        self._saveIDs = torch.arange(0, self._num_examples)
         return self._saveIDs
 
     def readCaptions(self, filenames, class_id):

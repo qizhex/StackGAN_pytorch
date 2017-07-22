@@ -145,34 +145,38 @@ class CondGANTrainer(object):
                         self.sample_super_image(stage, update_count)
                         torch.save(model, "%s/%s.ckpt" % (self.checkpoint_dir, self.exp_name))
 
+    def evaluate_set(self, test_data, test_set):
+        print('num_examples:', test_data._num_examples)
+        count = 0
+        num_caption = 2
+        while count < test_data._num_examples:
+            start = count % test_data._num_examples
+            hr_images, lr_images, embeddings_batchs, savenames, captions_batchs = \
+                self.dataset.test.next_batch_test(self.batch_size, count, num_caption)
+            print('count = ', count, 'start = ', start)
+            # the i-th sentence/caption
+            for i in range(len(embeddings_batchs)):
+                samples_batchs = []
+                hr_samples_batchs = []
+                numSamples = min(16, cfg.TRAIN.NUM_COPY)
+                for j in range(numSamples):
+                    samples, hr_samples = self.model(embeddings_batchs[i], 2)
+                    hr_samples_batchs.append(hr_samples)
+                    samples_batchs.append(samples)
+                save_super_images(hr_images, samples_batchs,
+                                  hr_samples_batchs,
+                                  savenames, captions_batchs,
+                                  i, self.log_dir, test_set)
+            count += self.batch_size
 
     def evaluate(self):
         if self.model_path.find('ckpt') != -1:
             print("Reading model parameters from %s" % self.model_path)
             self.model = torch.load(self.model_path)
-            test_data = self.dataset.test
-            print('num_examples:', test_data._num_examples)
-            count = 0
-            num_caption = 2
-            while count < test_data._num_examples:
-                start = count % test_data._num_examples
-                hr_images, lr_images, embeddings_batchs, savenames, captions_batchs = \
-                    self.dataset.test.next_batch_test(self.batch_size, count, num_caption)
-                print('count = ', count, 'start = ', start)
-                # the i-th sentence/caption
-                for i in range(len(embeddings_batchs)):
-                    samples_batchs = []
-                    hr_samples_batchs = []
-                    numSamples = min(16, cfg.TRAIN.NUM_COPY)
-                    for j in range(numSamples):
-                        samples, hr_samples = self.model(embeddings_batchs[i], 2)
-                        hr_samples_batchs.append(hr_samples)
-                        samples_batchs.append(samples)
-                    save_super_images(hr_images, samples_batchs,
-                                      hr_samples_batchs,
-                                      savenames, captions_batchs,
-                                      i, self.log_dir, "test")
-                count += self.batch_size
+            if cfg.GPU_ID != -1:
+                model.cuda()
+            self.evaluate_set(self.dataset.test, "test")
+            self.evaluate_set(self.dataset.test_train, "train")
         else:
             print("Input a valid model path.")
 
@@ -205,8 +209,9 @@ if __name__ == "__main__":
     dataset = TextDataset(datadir,  cfg.EMBEDDING_TYPE, 4)
     filename_test = '%s/test' % (datadir)
     dataset.test = dataset.get_data(filename_test)
+    filename_train = '%s/train' % (datadir)
+    dataset.test_train = dataset.get_data(filename_train)
     if cfg.TRAIN.FLAG:
-        filename_train = '%s/train' % (datadir)
         dataset.train = dataset.get_multi_process_data(filename_train, cfg.TRAIN.NUM_EMBEDDING, cfg.TRAIN.BATCH_SIZE)
         log_dir = "../ckt_logs/%s/%s_%s" % \
                   (cfg.DATASET_NAME, cfg.CONFIG_NAME, timestamp)
